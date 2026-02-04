@@ -1,10 +1,10 @@
 # WieTeach
 
-![WieTeach Banner](./docs/banner.png)
+![WieTeach Banner](./docs/banner.svg)
 
 Modern teaching board + recording studio for instructors. Built for fast inking, crisp PDFs, and production‑ready class recordings.
 
-![Session Flow](./docs/flow.png)
+![Session Flow](./docs/flow.svg)
 
 ## Highlights
 - **Low‑latency ink**: Optimized canvas pipeline for smooth strokes.
@@ -14,7 +14,7 @@ Modern teaching board + recording studio for instructors. Built for fast inking,
 - **Exports**: JSON, PNG, and PDF.
 
 ## Architecture
-![Architecture Diagram](./docs/architecture.png)
+![Architecture Diagram](./docs/architecture.svg)
 
 ## Tech Stack
 - Vue 3 + Vite
