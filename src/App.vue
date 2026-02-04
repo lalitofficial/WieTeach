@@ -167,21 +167,21 @@
                 {{ dev.label || `Mic ${idx + 1}` }}
               </option>
             </select>
-          <div class="recording-status" :class="{ active: isRecording }">
-            <span class="record-dot"></span>
-            <span>{{ recordingTimeLabel }}</span>
-            <span v-if="recordingSaveStatus" class="recording-save-status">
-              {{ recordingSaveStatus }}
-            </span>
-            <button
-              class="mini-btn header-toggle"
-              :class="{ active: recordingSaveToDisk }"
-              title="Save to disk"
-              @click="recordingSaveToDisk = !recordingSaveToDisk"
-            >
-              Disk
-            </button>
-          </div>
+            <div class="recording-status" :class="{ active: isRecording }">
+              <span class="record-dot"></span>
+              <span>{{ recordingTimeLabel }}</span>
+              <span v-if="recordingSaveStatus" class="recording-save-status">
+                {{ recordingSaveStatus }}
+              </span>
+              <button
+                class="mini-btn header-toggle"
+                :class="{ active: recordingSaveToDisk }"
+                title="Save to disk"
+                @click="recordingSaveToDisk = !recordingSaveToDisk"
+              >
+                Disk
+              </button>
+            </div>
             <div class="recording-ctrls">
               <!-- <button class="icon-btn" title="Start/Stop" @click="toggleRecordings">
                 <svg v-if="!isRecording" viewBox="0 0 24 24">
@@ -1416,9 +1416,9 @@ async function loadPdfJs() {
     pdfjsPromise = import("pdfjs-dist/legacy/build/pdf");
   }
   if (!pdfWorkerUrlPromise) {
-    pdfWorkerUrlPromise = import(
-      "pdfjs-dist/legacy/build/pdf.worker?url"
-    ).then((mod) => mod.default);
+    pdfWorkerUrlPromise = import("pdfjs-dist/legacy/build/pdf.worker?url").then(
+      (mod) => mod.default,
+    );
   }
   const [pdfjsLib, pdfWorkerUrl] = await Promise.all([
     pdfjsPromise,
@@ -1561,6 +1561,8 @@ const pdfImportStatus = ref({
 });
 let pdfRenderTask = null;
 let pdfImportAbort = false;
+const PDF_RENDER_SCALE = 1;
+const PDF_RENDER_MAX_DIM = 4096;
 const recordingSearch = ref("");
 const recordingView = ref("list");
 const templateTab = ref("default");
@@ -1572,7 +1574,10 @@ const overlayCanvas = ref(null);
 const shapeToolBtn = ref(null);
 const shapePopoverRef = ref(null);
 const shapePopoverSize = ref({ width: 320, height: 240 });
-const viewportSize = ref({ width: window.innerWidth, height: window.innerHeight });
+const viewportSize = ref({
+  width: window.innerWidth,
+  height: window.innerHeight,
+});
 const boardStage = ref(null);
 const bottomDock = ref(null);
 const leftDock = ref(null);
@@ -1684,8 +1689,9 @@ let micMeterInterval = null;
 let livePreviewWindow = null;
 let livePreviewRaf = null;
 const showPrestart = ref(false);
-const RECORD_WIDTH = 1920;
-const RECORD_HEIGHT = 1080;
+const RECORD_MAX_WIDTH = 2560;
+const RECORD_MAX_HEIGHT = 1440;
+const recordSize = reactive({ width: 1920, height: 1080 });
 let recordCompositeCanvas = null;
 let recordCompositeCtx = null;
 
@@ -1725,9 +1731,7 @@ const selectedIconStrokes = computed(() => {
     .map((id) => findStrokeById(slide, id))
     .filter((stroke) => stroke && stroke.type === STROKE_TYPES.ICON);
 });
-const selectionHasIcons = computed(
-  () => selectedIconStrokes.value.length > 0,
-);
+const selectionHasIcons = computed(() => selectedIconStrokes.value.length > 0);
 const selectedIconFill = computed(() => {
   const stroke = selectedIconStrokes.value[0];
   return stroke?.fillColor || stroke?.color || "#111111";
@@ -3317,23 +3321,25 @@ function renderRecordingFrame() {
 
   const { width, height } = getCanvasSize();
 
-  recordCompositeCtx.clearRect(0, 0, RECORD_WIDTH, RECORD_HEIGHT);
+  const recordWidth = recordSize.width;
+  const recordHeight = recordSize.height;
+  recordCompositeCtx.clearRect(0, 0, recordWidth, recordHeight);
 
   const sourceAspect = width / height;
-  const recordAspect = RECORD_WIDTH / RECORD_HEIGHT;
+  const recordAspect = recordWidth / recordHeight;
 
   let drawWidth, drawHeight, offsetX, offsetY;
 
   if (sourceAspect > recordAspect) {
-    drawWidth = RECORD_WIDTH;
-    drawHeight = RECORD_WIDTH / sourceAspect;
+    drawWidth = recordWidth;
+    drawHeight = recordWidth / sourceAspect;
     offsetX = 0;
-    offsetY = (RECORD_HEIGHT - drawHeight) / 2;
+    offsetY = (recordHeight - drawHeight) / 2;
   } else {
-    drawHeight = RECORD_HEIGHT;
-    drawWidth = RECORD_HEIGHT * sourceAspect;
+    drawHeight = recordHeight;
+    drawWidth = recordHeight * sourceAspect;
     offsetY = 0;
-    offsetX = (RECORD_WIDTH - drawWidth) / 2;
+    offsetX = (recordWidth - drawWidth) / 2;
   }
 
   // ⭐ Background
@@ -3687,7 +3693,10 @@ async function startRecording() {
         recordingFileStream = await recordingFileHandle.createWritable();
         recordingSaveStatus.value = "Saving to disk";
       } catch (err) {
-        console.warn("Save to disk canceled or failed, falling back to IDB", err);
+        console.warn(
+          "Save to disk canceled or failed, falling back to IDB",
+          err,
+        );
         recordingSaveToDisk.value = false;
         showToast("Save to disk canceled, using IndexedDB", "warn");
       }
@@ -3715,7 +3724,12 @@ async function startRecording() {
           await recordingFileStream.close();
           recordingSaveStatus.value = "Saved to disk";
           lastRecordingFileHandle = recordingFileHandle;
-          showActionToast("Recording saved to disk", "Open", openLastRecording, "success");
+          showActionToast(
+            "Recording saved to disk",
+            "Open",
+            openLastRecording,
+            "success",
+          );
         } catch (err) {
           console.error("Failed to write recording to disk", err);
           showToast("Failed to save recording to disk", "error");
@@ -3870,6 +3884,19 @@ function resizeCanvases() {
   if (recordCanvas) {
     recordCanvas.width = canvas.width;
     recordCanvas.height = canvas.height;
+  }
+  if (recordCompositeCanvas) {
+    const desiredWidth = Math.min(RECORD_MAX_WIDTH, canvas.width);
+    const desiredHeight = Math.min(RECORD_MAX_HEIGHT, canvas.height);
+    if (
+      recordCompositeCanvas.width !== desiredWidth ||
+      recordCompositeCanvas.height !== desiredHeight
+    ) {
+      recordCompositeCanvas.width = desiredWidth;
+      recordCompositeCanvas.height = desiredHeight;
+    }
+    recordSize.width = recordCompositeCanvas.width;
+    recordSize.height = recordCompositeCanvas.height;
   }
 
   inkCtx.value.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -5389,15 +5416,26 @@ async function handlePdfImport(event) {
         canvasW / viewport.width,
         canvasH / viewport.height,
       );
-      const renderViewport = page.getViewport({ scale: scale * 3 });
+      let renderScale = scale * PDF_RENDER_SCALE;
+      const maxDim = Math.max(viewport.width, viewport.height);
+      const maxAllowedScale = PDF_RENDER_MAX_DIM / maxDim;
+      if (renderScale > maxAllowedScale) {
+        renderScale = maxAllowedScale;
+      }
+      const renderViewport = page.getViewport({ scale: renderScale });
+      const renderWidth = Math.ceil(renderViewport.width);
+      const renderHeight = Math.ceil(renderViewport.height);
       const canvas =
         typeof OffscreenCanvas !== "undefined"
-          ? new OffscreenCanvas(renderViewport.width, renderViewport.height)
+          ? new OffscreenCanvas(renderWidth, renderHeight)
           : document.createElement("canvas");
-      canvas.width = renderViewport.width;
-      canvas.height = renderViewport.height;
+      canvas.width = renderWidth;
+      canvas.height = renderHeight;
       const ctx = canvas.getContext("2d");
-      pdfRenderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+      pdfRenderTask = page.render({
+        canvasContext: ctx,
+        viewport: renderViewport,
+      });
       try {
         await pdfRenderTask.promise;
       } finally {
@@ -6411,8 +6449,8 @@ onMounted(async () => {
     desynchronized: true,
   });
   recordCompositeCanvas = document.createElement("canvas");
-  recordCompositeCanvas.width = RECORD_WIDTH;
-  recordCompositeCanvas.height = RECORD_HEIGHT;
+  recordCompositeCanvas.width = recordSize.width;
+  recordCompositeCanvas.height = recordSize.height;
   recordCompositeCtx = recordCompositeCanvas.getContext("2d", {
     alpha: true,
     desynchronized: true,
