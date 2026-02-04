@@ -795,7 +795,14 @@
                 </div>
               </div>
               <button
-                v-if="pdfImportStatus.error"
+                v-if="!pdfImportStatus.error && !pdfImportStatus.cancelled"
+                class="mini-btn"
+                @click="cancelPdfImport"
+              >
+                Cancel
+              </button>
+              <button
+                v-if="pdfImportStatus.error || pdfImportStatus.cancelled"
                 class="mini-btn"
                 @click="pdfImportStatus.active = false"
               >
@@ -1384,9 +1391,6 @@ import {
   nextTick,
 } from "vue";
 import { openDB } from "idb";
-import { jsPDF } from "jspdf";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
-import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker?url";
 import bootstrapIconsSprite from "bootstrap-icons/bootstrap-icons.svg?raw";
 import IconPicker from "@/components/IconPicker.vue";
 import {
@@ -1402,6 +1406,33 @@ import {
   migrateDeck,
   validateStroke,
 } from "@/utils/migration.js";
+
+let pdfjsPromise = null;
+let pdfWorkerUrlPromise = null;
+let jsPdfPromise = null;
+
+async function loadPdfJs() {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import("pdfjs-dist/legacy/build/pdf");
+  }
+  if (!pdfWorkerUrlPromise) {
+    pdfWorkerUrlPromise = import(
+      "pdfjs-dist/legacy/build/pdf.worker?url"
+    ).then((mod) => mod.default);
+  }
+  const [pdfjsLib, pdfWorkerUrl] = await Promise.all([
+    pdfjsPromise,
+    pdfWorkerUrlPromise,
+  ]);
+  return { pdfjsLib, pdfWorkerUrl };
+}
+
+async function loadJsPdf() {
+  if (!jsPdfPromise) {
+    jsPdfPromise = import("jspdf");
+  }
+  return jsPdfPromise;
+}
 
 const templateAssetModules = import.meta.glob(
   "./assets/templates/*.{png,jpg,jpeg,webp}",
@@ -1526,7 +1557,10 @@ const pdfImportStatus = ref({
   current: 0,
   total: 0,
   error: false,
+  cancelled: false,
 });
+let pdfRenderTask = null;
+let pdfImportAbort = false;
 const recordingSearch = ref("");
 const recordingView = ref("list");
 const templateTab = ref("default");
@@ -1568,11 +1602,16 @@ const recordingSaveToDisk = ref(false);
 const recordingDirHandle = ref(null);
 let recordingFileHandle = null;
 let recordingFileStream = null;
+let lastRecordingFileHandle = null;
+let recordingWriteChain = null;
+let recordingWriteFailed = false;
 const recordingSaveStatus = ref("");
 const toast = reactive({
   visible: false,
   message: "",
   type: "info",
+  actionLabel: "",
+  action: null,
 });
 const recordingUrls = new Map();
 const previewRecording = ref(null);
@@ -1836,9 +1875,36 @@ function showToast(message, type = "info", duration = 3000) {
   toast.message = message;
   toast.type = type;
   toast.visible = true;
+  toast.actionLabel = "";
+  toast.action = null;
   setTimeout(() => {
     toast.visible = false;
   }, duration);
+}
+
+function showActionToast(message, actionLabel, action, type = "info") {
+  toast.message = message;
+  toast.type = type;
+  toast.visible = true;
+  toast.actionLabel = actionLabel;
+  toast.action = action;
+}
+
+function handleToastAction() {
+  if (toast.action) toast.action();
+  toast.visible = false;
+}
+
+async function openLastRecording() {
+  if (!lastRecordingFileHandle) return;
+  try {
+    const file = await lastRecordingFileHandle.getFile();
+    const url = URL.createObjectURL(file);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    showToast("Failed to open recording", "error");
+  }
 }
 
 async function loadRecordingDirHandle() {
@@ -3439,6 +3505,9 @@ function drawWebcamLayerComposite(
       : webcamVideo.value;
 
   if (!src) return;
+  const srcWidth = "videoWidth" in src ? src.videoWidth : src.width;
+  const srcHeight = "videoHeight" in src ? src.videoHeight : src.height;
+  if (!srcWidth || !srcHeight) return;
 
   // webcam.x, webcam.y, webcam.width, webcam.height are in LOGICAL (CSS) pixels
   // ratio converts logical pixels → physical canvas pixels
@@ -3458,6 +3527,8 @@ function drawWebcamLayerComposite(
   const y = offsetY + physicalY * scaleY;
 
   ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   // Scale border radius proportionally
   const scaledRadius = 14 * ratio * Math.min(scaleX, scaleY);
@@ -3467,9 +3538,9 @@ function drawWebcamLayerComposite(
   if (webcam.flip) {
     ctx.translate(x + w, y);
     ctx.scale(-1, 1);
-    ctx.drawImage(src, 0, 0, w, h);
+    ctx.drawImage(src, 0, 0, srcWidth, srcHeight, 0, 0, w, h);
   } else {
-    ctx.drawImage(src, x, y, w, h);
+    ctx.drawImage(src, 0, 0, srcWidth, srcHeight, x, y, w, h);
   }
 
   ctx.restore();
@@ -3561,6 +3632,8 @@ async function startRecording() {
     resetRecordingTimer();
     recordingFileHandle = null;
     recordingFileStream = null;
+    recordingWriteChain = null;
+    recordingWriteFailed = false;
     recordingSaveStatus.value = "";
     if (recordingSaveToDisk.value && !("showDirectoryPicker" in window)) {
       console.warn("File System Access API not supported, using IndexedDB");
@@ -3600,7 +3673,6 @@ async function startRecording() {
       audioBitsPerSecond: 128_000,
     });
     const chunks = [];
-    const pendingWrites = [];
     if (recordingSaveToDisk.value && "showDirectoryPicker" in window) {
       try {
         const dirHandle = await ensureRecordingDirHandle();
@@ -3622,20 +3694,28 @@ async function startRecording() {
     }
     recorder.ondataavailable = (evt) => {
       if (!evt.data || !evt.data.size) return;
-      if (recordingFileStream) {
-        const writePromise = recordingFileStream.write(evt.data);
-        pendingWrites.push(writePromise);
+      if (recordingFileStream && !recordingWriteFailed) {
+        if (!recordingWriteChain) recordingWriteChain = Promise.resolve();
+        recordingWriteChain = recordingWriteChain
+          .then(() => recordingFileStream.write(evt.data))
+          .catch((err) => {
+            console.error("Recording write failed", err);
+            recordingWriteFailed = true;
+            showToast("Disk write failed, falling back to memory", "warn");
+            chunks.push(evt.data);
+          });
       } else {
         chunks.push(evt.data);
       }
     };
     recorder.onstop = async () => {
-      if (recordingFileStream) {
+      if (recordingFileStream && !recordingWriteFailed) {
         try {
-          await Promise.all(pendingWrites);
+          if (recordingWriteChain) await recordingWriteChain;
           await recordingFileStream.close();
           recordingSaveStatus.value = "Saved to disk";
-          showToast("Recording saved to disk", "success");
+          lastRecordingFileHandle = recordingFileHandle;
+          showActionToast("Recording saved to disk", "Open", openLastRecording, "success");
         } catch (err) {
           console.error("Failed to write recording to disk", err);
           showToast("Failed to save recording to disk", "error");
@@ -3644,6 +3724,16 @@ async function startRecording() {
           recordingFileHandle = null;
         }
         return;
+      }
+      if (recordingFileStream && recordingWriteFailed) {
+        try {
+          await recordingFileStream.close();
+        } catch (err) {
+          console.warn("Failed to close recording stream", err);
+        } finally {
+          recordingFileStream = null;
+          recordingFileHandle = null;
+        }
       }
       const blob = new Blob(chunks, { type: mimeType || "video/webm" });
       const now = new Date();
@@ -5257,6 +5347,8 @@ function handleImport(event) {
 async function handlePdfImport(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  pdfImportAbort = false;
+  pdfRenderTask = null;
   try {
     pdfImportStatus.value = {
       active: true,
@@ -5264,8 +5356,10 @@ async function handlePdfImport(event) {
       current: 0,
       total: 0,
       error: false,
+      cancelled: false,
     };
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+    const { pdfjsLib, pdfWorkerUrl } = await loadPdfJs();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
     const data = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data }).promise;
     const { width: canvasW, height: canvasH } = getCanvasSize();
@@ -5276,6 +5370,14 @@ async function handlePdfImport(event) {
       message: `Rendering 1 / ${pdf.numPages}`,
     };
     for (let i = 1; i <= pdf.numPages; i += 1) {
+      if (pdfImportAbort) {
+        pdfImportStatus.value = {
+          ...pdfImportStatus.value,
+          message: "Import canceled",
+          cancelled: true,
+        };
+        return;
+      }
       pdfImportStatus.value = {
         ...pdfImportStatus.value,
         current: i,
@@ -5287,7 +5389,7 @@ async function handlePdfImport(event) {
         canvasW / viewport.width,
         canvasH / viewport.height,
       );
-      const renderViewport = page.getViewport({ scale: scale * 2 });
+      const renderViewport = page.getViewport({ scale: scale * 3 });
       const canvas =
         typeof OffscreenCanvas !== "undefined"
           ? new OffscreenCanvas(renderViewport.width, renderViewport.height)
@@ -5295,8 +5397,20 @@ async function handlePdfImport(event) {
       canvas.width = renderViewport.width;
       canvas.height = renderViewport.height;
       const ctx = canvas.getContext("2d");
-      await page.render({ canvasContext: ctx, viewport: renderViewport })
-        .promise;
+      pdfRenderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+      try {
+        await pdfRenderTask.promise;
+      } finally {
+        pdfRenderTask = null;
+      }
+      if (pdfImportAbort) {
+        pdfImportStatus.value = {
+          ...pdfImportStatus.value,
+          message: "Import canceled",
+          cancelled: true,
+        };
+        return;
+      }
       const slide = createSlide();
       slide.backgroundPattern = null;
       if (typeof createImageBitmap !== "undefined") {
@@ -5319,6 +5433,14 @@ async function handlePdfImport(event) {
       };
       newSlides.push(slide);
     }
+    if (pdfImportAbort) {
+      pdfImportStatus.value = {
+        ...pdfImportStatus.value,
+        message: "Import canceled",
+        cancelled: true,
+      };
+      return;
+    }
     slides.value = newSlides;
     currentSlideIndex.value = 0;
     renderAllThumbnails();
@@ -5335,9 +5457,18 @@ async function handlePdfImport(event) {
         current: 0,
         total: 0,
         error: false,
+        cancelled: false,
       };
     }, 700);
   } catch (err) {
+    if (pdfImportAbort) {
+      pdfImportStatus.value = {
+        ...pdfImportStatus.value,
+        message: "Import canceled",
+        cancelled: true,
+      };
+      return;
+    }
     console.error("Failed to import PDF", err);
     pdfImportStatus.value = {
       active: true,
@@ -5345,6 +5476,7 @@ async function handlePdfImport(event) {
       current: 0,
       total: 0,
       error: true,
+      cancelled: false,
     };
     setTimeout(() => {
       pdfImportStatus.value = {
@@ -5353,9 +5485,27 @@ async function handlePdfImport(event) {
         current: 0,
         total: 0,
         error: false,
+        cancelled: false,
       };
     }, 1500);
   }
+}
+
+function cancelPdfImport() {
+  if (!pdfImportStatus.value.active) return;
+  pdfImportAbort = true;
+  if (pdfRenderTask?.cancel) {
+    try {
+      pdfRenderTask.cancel();
+    } catch (err) {
+      console.warn("Failed to cancel PDF render task", err);
+    }
+  }
+  pdfImportStatus.value = {
+    ...pdfImportStatus.value,
+    message: "Canceling...",
+    cancelled: true,
+  };
 }
 
 function exportJson() {
@@ -5380,6 +5530,7 @@ function exportPng() {
 }
 
 async function exportPdf() {
+  const { jsPDF } = await loadJsPdf();
   const { width, height } = getCanvasSize();
   const doc = new jsPDF({ unit: "px", format: [width, height] });
   for (let i = 0; i < slides.value.length; i += 1) {
