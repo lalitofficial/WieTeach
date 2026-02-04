@@ -2,7 +2,12 @@
 
 A modern, high‑performance teaching board for instructors. Draw, annotate, import PDFs, manage slides, and record classes with webcam compositing.
 
-![WieTeach Hero](./docs/hero.svg)
+## Latest High‑Quality Recording Build
+The best recording quality and performance work is on branch `recording/local-high`.
+- Higher quality PDF rendering and recording pipeline
+- Save‑to‑disk improvements and recording UX updates
+
+If you want the best recording output, use that branch.
 
 ## Why WieTeach
 - **Low‑latency ink**: Smooth strokes with optimized rendering paths.
