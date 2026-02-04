@@ -3214,10 +3214,16 @@ function renderRecordingFrame() {
 }
 
 function updateWebcamCanvasSize() {
-  if (webcamCanvas.value) {
-    webcamCanvas.value.width = Math.max(1, Math.floor(webcam.width));
-    webcamCanvas.value.height = Math.max(1, Math.floor(webcam.height));
+  if (!webcamCanvas.value) return;
+  const vw = webcamVideo.value?.videoWidth;
+  const vh = webcamVideo.value?.videoHeight;
+  if (vw && vh) {
+    webcamCanvas.value.width = vw;
+    webcamCanvas.value.height = vh;
+    return;
   }
+  webcamCanvas.value.width = Math.max(1, Math.floor(webcam.width));
+  webcamCanvas.value.height = Math.max(1, Math.floor(webcam.height));
 }
 
 function drawChromaToCanvas(videoEl, canvasEl, ctx) {
