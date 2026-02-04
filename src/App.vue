@@ -1,0 +1,5972 @@
+<template>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="brand-btn" @click="navigate('/')">WieTeach</button>
+        <nav class="top-nav">
+          <button
+            class="nav-btn"
+            :class="{ active: routePath === '/' }"
+            @click="navigate('/')"
+          >
+            Dashboard
+          </button>
+          <button
+            class="nav-btn"
+            :class="{ active: routePath === '/class' }"
+            @click="navigate('/class')"
+          >
+            Class
+          </button>
+          <button
+            class="nav-btn"
+            :class="{ active: routePath === '/recordings' }"
+            @click="navigate('/recordings')"
+          >
+            Recordings
+          </button>
+        </nav>
+      </div>
+      <div class="topbar-right">
+        <input
+          ref="importInput"
+          type="file"
+          accept="application/json"
+          class="sr-only"
+          @change="handleImport"
+        />
+        <input
+          ref="pdfInput"
+          type="file"
+          accept="application/pdf"
+          class="sr-only"
+          @change="handlePdfImport"
+        />
+        <input
+          ref="templateInput"
+          type="file"
+          accept="image/*"
+          class="sr-only"
+          multiple
+          @change="handleTemplateUpload"
+        />
+
+        <template v-if="isClassRoute">
+          <div class="topbar-av">
+            <div
+              class="av-pill"
+              :class="{ disabled: !avControls.cameraEnabled }"
+            >
+              <button
+                class="icon-btn"
+                :class="{ active: avControls.cameraEnabled }"
+                :title="
+                  avControls.cameraEnabled ? 'Stop camera' : 'Start camera'
+                "
+                @click="toggleCamera"
+              >
+                <svg v-if="!avControls.cameraEnabled" viewBox="0 0 24 24">
+                  <path
+                    d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
+                  />
+                  <path d="M9 9l6 3-6 3V9z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path
+                    d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
+                  />
+                  <path d="M9 9h6v6H9z" />
+                </svg>
+              </button>
+              <button
+                class="icon-btn pause-btn"
+                :class="{
+                  active: camPaused,
+                  disabled: !avControls.cameraEnabled,
+                }"
+                :title="camPaused ? 'Resume camera' : 'Pause camera'"
+                :disabled="!avControls.cameraEnabled"
+                @click="toggleCamPause"
+              >
+                <svg v-if="!camPaused" viewBox="0 0 24 24">
+                  <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M6 4l14 8-14 8z" />
+                </svg>
+              </button>
+            </div>
+            <div class="av-pill" :class="{ disabled: !avControls.micEnabled }">
+              <button
+                class="icon-btn"
+                :class="{ active: avControls.micEnabled }"
+                :title="avControls.micEnabled ? 'Mute mic' : 'Unmute mic'"
+                @click="toggleMic"
+              >
+                <span
+                  class="mic-level"
+                  :style="{ height: `${Math.round(micLevel * 100)}%` }"
+                ></span>
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z"
+                  />
+                  <path d="M5 12a7 7 0 0 0 14 0" />
+                  <path d="M12 19v2" />
+                </svg>
+              </button>
+              <button
+                class="icon-btn pause-btn"
+                :class="{
+                  active: micPaused,
+                  disabled: !avControls.micEnabled,
+                }"
+                :title="micPaused ? 'Resume mic' : 'Pause mic'"
+                :disabled="!avControls.micEnabled"
+                @click="toggleMicPause"
+              >
+                <svg v-if="!micPaused" viewBox="0 0 24 24">
+                  <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M6 4l14 8-14 8z" />
+                </svg>
+              </button>
+            </div>
+            <select
+              class="compact-select"
+              v-model="precheck.cameraId"
+              @change="handleCameraDeviceChange"
+              @focus="ensureAvPermissions"
+              title="Camera device"
+            >
+              <option value="">Camera</option>
+              <option
+                v-for="(dev, idx) in cameras"
+                :key="dev.deviceId"
+                :value="dev.deviceId"
+              >
+                {{ dev.label || `Camera ${idx + 1}` }}
+              </option>
+            </select>
+            <select
+              class="compact-select"
+              v-model="precheck.micId"
+              @change="handleMicDeviceChange"
+              @focus="ensureAvPermissions"
+              @mousedown="ensureAvPermissions"
+              @click="ensureAvPermissions"
+              title="Microphone device"
+            >
+              <option value="">Mic</option>
+              <option
+                v-for="(dev, idx) in microphones"
+                :key="dev.deviceId"
+                :value="dev.deviceId"
+              >
+                {{ dev.label || `Mic ${idx + 1}` }}
+              </option>
+            </select>
+            <div class="recording-status" :class="{ active: isRecording }">
+              <span class="record-dot"></span>
+              <span>{{ recordingTimeLabel }}</span>
+            </div>
+            <div class="recording-ctrls">
+              <!-- <button class="icon-btn" title="Start/Stop" @click="toggleRecordings">
+                <svg v-if="!isRecording" viewBox="0 0 24 24">
+                  <path d="M6 4l14 8-14 8z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M6 6h12v12H6z" />
+                </svg>
+              </button> -->
+              <button
+                class="icon-btn"
+                :disabled="!isRecording"
+                title="Pause/Resume"
+                @click="toggleRecordingPause"
+              >
+                <svg v-if="!recordingPaused" viewBox="0 0 24 24">
+                  <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M6 4l14 8-14 8z" />
+                </svg>
+              </button>
+              <button
+                class="icon-btn"
+                title="Open Live Preview"
+                @click="openLivePreview"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 6h16v12H4z" />
+                  <path d="M10 9l5 3-5 3z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <!-- <button class="pill-btn ghost">Poll</button> -->
+          <button
+            class="pill-btn primary start-class-btn"
+            @click="openPrestart"
+          >
+            <svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 4l14 8-14 8z" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6h12v12H6z" />
+            </svg>
+            <span>{{ isRecording ? "Stop Recording" : "Start Class" }}</span>
+          </button>
+        </template>
+        <template v-else>
+          <button class="pill-btn ghost" @click="navigate('/recordings')">
+            Open Recordings
+          </button>
+          <button class="pill-btn primary" @click="navigate('/class')">
+            Start Class
+          </button>
+        </template>
+      </div>
+    </header>
+
+    <main class="dashboard-shell" v-show="isDashboardRoute">
+      <section class="dashboard-hero">
+        <div>
+          <p class="eyebrow">Welcome back</p>
+          <h1>WieTeach</h1>
+          <p class="muted">
+            Launch a class, manage recordings, and keep every lesson organized.
+          </p>
+          <div class="hero-actions">
+            <button class="pill-btn primary" @click="navigate('/class')">
+              Start New Class
+            </button>
+            <button class="pill-btn ghost" @click="navigate('/recordings')">
+              Open Recordings
+            </button>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-stat">
+            <span>Total Recordings</span>
+            <strong>{{ recordings.length }}</strong>
+          </div>
+          <div class="hero-stat">
+            <span>Total Storage</span>
+            <strong>{{ formatBytes(totalRecordingSize) }}</strong>
+          </div>
+          <div class="hero-stat">
+            <span>Latest</span>
+            <strong>{{
+              recordings[0]?.createdAt || "No recordings yet"
+            }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-grid">
+        <div class="dashboard-card">
+          <h3>Quick Actions</h3>
+          <button class="ghost-btn" @click="navigate('/class')">
+            Resume Class
+          </button>
+          <button class="ghost-btn" @click="navigate('/recordings')">
+            Browse Recordings
+          </button>
+          <button class="ghost-btn" @click="openSettingsFromDashboard">
+            Import / Export
+          </button>
+        </div>
+        <div class="dashboard-card">
+          <h3>Recent Recordings</h3>
+          <div v-if="recordings.length === 0" class="empty-state">
+            No recordings yet
+          </div>
+          <div v-else class="recording-mini-list">
+            <div
+              v-for="rec in recordings.slice(0, 3)"
+              :key="rec.id"
+              class="recording-mini"
+            >
+              <div>
+                <div class="recording-name">{{ rec.name }}</div>
+                <div class="recording-meta">
+                  {{ formatBytes(rec.size) }} • {{ rec.createdAt }}
+                </div>
+              </div>
+              <button class="mini-btn" @click="downloadRecording(rec)">
+                ↓
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard-card">
+          <h3>Tips</h3>
+          <ul class="tip-list">
+            <li>
+              Press <strong>P</strong> for pen, <strong>E</strong> for eraser.
+            </li>
+            <li>Hold <strong>Alt</strong> to scale selections.</li>
+            <li>Use the slide dock to reorder quickly.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <main class="recordings-shell" v-show="isRecordingsRoute">
+      <section class="recordings-header">
+        <div>
+          <h1>Recordings</h1>
+          <p class="muted">
+            Preview, download, and manage your class captures.
+          </p>
+        </div>
+        <div class="recordings-actions">
+          <input
+            class="search-input"
+            type="search"
+            placeholder="Search recordings..."
+            v-model="recordingSearch"
+          />
+          <div class="view-toggle">
+            <button
+              class="icon-btn"
+              :class="{ active: recordingView === 'list' }"
+              @click="recordingView = 'list'"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M5 6h14M5 12h14M5 18h14" />
+              </svg>
+            </button>
+            <button
+              class="icon-btn"
+              :class="{ active: recordingView === 'compact' }"
+              @click="recordingView = 'compact'"
+            >
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M6 6h6v6H6zM14 6h4M14 10h4M6 14h6v6H6zM14 14h4M14 18h4"
+                />
+              </svg>
+            </button>
+            <button
+              class="icon-btn"
+              :class="{ active: recordingView === 'grid' }"
+              @click="recordingView = 'grid'"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+      <section class="recordings-stats">
+        <div>
+          <span>Total</span>
+          <strong>{{ recordings.length }}</strong>
+        </div>
+        <div>
+          <span>Storage</span>
+          <strong>{{ formatBytes(totalRecordingSize) }}</strong>
+        </div>
+        <div>
+          <span>Latest</span>
+          <strong>{{ recordings[0]?.createdAt || "—" }}</strong>
+        </div>
+      </section>
+      <section class="recordings-list" :class="`view-${recordingView}`">
+        <div v-if="filteredRecordings.length === 0" class="empty-state">
+          No recordings found.
+        </div>
+        <div
+          v-for="rec in filteredRecordings"
+          :key="rec.id"
+          class="recording-card"
+        >
+          <div class="recording-thumb" @click="openRecordingPreview(rec)">
+            <video :src="getRecordingUrl(rec)" muted preload="metadata"></video>
+            <button class="preview-btn" title="Preview">▶</button>
+          </div>
+          <div class="recording-info">
+            <div class="recording-name">{{ rec.name }}</div>
+            <div class="recording-meta">
+              {{ formatBytes(rec.size) }} • {{ rec.createdAt }}
+            </div>
+          </div>
+          <div class="recording-card-actions">
+            <button class="action-btn" @click="openRecordingPreview(rec)">
+              Preview
+            </button>
+            <button class="action-btn" @click="downloadRecording(rec)">
+              Download
+            </button>
+            <button class="action-btn danger" @click="deleteRecording(rec.id)">
+              Delete
+            </button>
+          </div>
+        </div>
+      </section>
+      <div v-if="previewRecording" class="preview-backdrop">
+        <div class="preview-modal">
+          <div class="preview-header">
+            <div>
+              <strong>{{ previewRecording.name }}</strong>
+              <div class="recording-meta">
+                {{ formatBytes(previewRecording.size) }} •
+                {{ previewRecording.createdAt }}
+              </div>
+            </div>
+            <button class="close-btn" @click="closeRecordingPreview">
+              &times;
+            </button>
+          </div>
+          <video
+            class="preview-video"
+            :src="getRecordingUrl(previewRecording)"
+            controls
+            autoplay
+          ></video>
+        </div>
+      </div>
+    </main>
+
+    <main class="board-shell" v-show="isClassRoute">
+      <div class="board-area">
+        <div class="left-rail">
+          <div class="rail-pill">
+            <span class="rail-arrow">&#9664;</span>
+            <span>{{ zoomLabel }}</span>
+          </div>
+        </div>
+
+        <div class="bottom-toolbar left" ref="leftDock">
+          <button
+            class="icon-btn"
+            title="Undo"
+            :style="undoStyle"
+            @click="undo"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 4L4 9l5 5" />
+              <path d="M4 9h9a6 6 0 1 1 0 12h-3" />
+            </svg>
+          </button>
+          <button
+            class="icon-btn"
+            title="Redo"
+            :style="redoStyle"
+            @click="redo"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 4l5 5-5 5" />
+              <path d="M20 9h-9a6 6 0 1 0 0 12h3" />
+            </svg>
+          </button>
+          <span class="dock-divider"></span>
+          <button
+            class="tool-btn"
+            :class="{ active: tool === 'select' }"
+            @click="setTool('select')"
+            title="Select"
+          >
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M4 4h6M14 4h6M4 4v6M20 4v6M4 14v6M20 14v6M4 20h6M14 20h6"
+              />
+            </svg>
+          </button>
+          <button
+            class="tool-btn"
+            :class="{ active: tool === 'pointer' }"
+            @click="setTool('pointer')"
+            title="Pointer"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M5 3l7 15 2-5 5-2L5 3z" />
+            </svg>
+          </button>
+          <button
+            class="tool-btn"
+            :class="{ active: tool === 'fill' }"
+            @click="toggleFillPopover"
+            title="Fill"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M3 12l7-7 8 8-7 7H3v-8z" />
+              <path d="M14 5l2-2 4 4-2 2" />
+            </svg>
+          </button>
+
+          <button
+            class="icon-btn"
+            title="Settings"
+            @click="toggleSettingsPopover"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="6" r="2.2" />
+              <circle cx="12" cy="12" r="2.2" />
+              <circle cx="12" cy="18" r="2.2" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="board-stage" ref="boardStage">
+          <div class="canvas-stack" ref="canvasStack">
+            <canvas id="backgroundCanvas" ref="backgroundCanvas"></canvas>
+            <canvas
+              id="inkCanvas"
+              ref="inkCanvas"
+              @pointerdown="handlePointerDown"
+              @pointermove="handlePointerMove"
+              @pointerup="handlePointerUp"
+              @pointercancel="handlePointerUp"
+            ></canvas>
+            <canvas id="overlayCanvas" ref="overlayCanvas"></canvas>
+          </div>
+
+          <div
+            v-if="webcam.enabled"
+            class="webcam-preview"
+            :class="{ flipped: webcam.flip, locked: webcam.locked }"
+            :style="{
+              left: `${webcam.x}px`,
+              top: `${webcam.y}px`,
+              width: `${webcam.width}px`,
+              height: `${webcam.height}px`,
+              pointerEvents: webcam.locked ? 'none' : 'auto',
+            }"
+            @pointerdown.capture="onWebcamDragStart"
+          >
+            <video
+              v-show="!webcam.chromaEnabled"
+              ref="webcamVideo"
+              autoplay
+              playsinline
+              muted
+            ></video>
+            <canvas
+              v-show="webcam.chromaEnabled"
+              ref="webcamCanvas"
+              class="webcam-canvas"
+            ></canvas>
+            <div class="webcam-controls" :style="{ pointerEvents: 'auto' }">
+              <button
+                class="mini-btn"
+                :class="{ active: webcam.locked }"
+                @click.stop="webcam.locked = !webcam.locked"
+                :title="webcam.locked ? 'Unlock position' : 'Lock position'"
+              >
+                <svg v-if="webcam.locked" viewBox="0 0 24 24">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M7 11V8a5 5 0 0 1 10 0" />
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                  <path d="M17 11V8" />
+                </svg>
+              </button>
+              <button class="mini-btn" @click.stop="toggleWebcamFlip">
+                <svg viewBox="0 0 24 24">
+                  <path d="M7 7h6v6H7z" />
+                  <path d="M3 12a9 9 0 0 1 9-9" />
+                  <path d="M21 12a9 9 0 0 1-9 9" />
+                </svg>
+              </button>
+              <button
+                class="mini-btn"
+                :class="{ active: webcam.chromaEnabled }"
+                @click.stop="toggleChroma"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 4v16M4 12h16" />
+                  <path d="M7 7l10 10M17 7L7 17" />
+                </svg>
+              </button>
+              <button class="mini-btn" @click.stop="toggleWebcamMinimize">
+                <svg v-if="!webcam.minimized" viewBox="0 0 24 24">
+                  <path
+                    d="M5 5h6v2H7v4H5zM19 5v6h-2V7h-4V5zM5 19v-6h2v4h4v2zM19 19h-6v-2h4v-4h2z"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M7 7h10v10H7z" />
+                </svg>
+              </button>
+              <button class="mini-btn" @click.stop="toggleWebcam">
+                <svg viewBox="0 0 24 24">
+                  <path d="M6 6l12 12M18 6l-12 12" />
+                </svg>
+              </button>
+            </div>
+            <div
+              class="webcam-resize-handle"
+              @pointerdown.stop="onWebcamResizeStart"
+              :style="{ pointerEvents: webcam.locked ? 'none' : 'auto' }"
+            ></div>
+          </div>
+
+          <div v-if="showQuickToolControls" class="quick-tool-panel">
+            <div class="quick-row">
+              <input
+                class="quick-slider"
+                type="range"
+                min="1"
+                max="24"
+                step="0.5"
+                v-model.number="size"
+              />
+              <div class="quick-size">{{ Math.round(size) }}</div>
+            </div>
+            <div class="quick-colors">
+              <button
+                v-for="swatch in quickColors"
+                :key="swatch"
+                class="quick-swatch"
+                :class="{ active: swatch === color }"
+                :style="{ background: swatch }"
+                @click="setColor(swatch)"
+              ></button>
+              <label class="quick-picker">
+                <input type="color" v-model="color" />
+              </label>
+            </div>
+          </div>
+
+          <div class="bottom-toolbar bottom-dock" ref="bottomDock">
+            <button
+              class="tool-btn"
+              :class="{ active: tool === 'pen' }"
+              @click="togglePenPopover"
+              title="Pen"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M7 17l7-7 3 3-7 7H7v-3z" />
+                <path d="M14 7l2-2 4 4-2 2" />
+              </svg>
+            </button>
+            <button
+              class="tool-btn"
+              :class="{ active: tool === 'highlighter' }"
+              @click="setTool('highlighter')"
+              title="Highlighter"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M4 20h6l10-10-6-6L4 14v6z" />
+                <path d="M12 6l6 6" />
+              </svg>
+            </button>
+            <button
+              class="tool-btn"
+              :class="{ active: tool === 'eraser' }"
+              @click="toggleEraserPopover"
+              :title="eraserTitle"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M4 15l7-7 6 6-7 7H4v-6z" />
+                <path d="M12 21h8" />
+              </svg>
+            </button>
+            <button
+              class="tool-btn"
+              :class="{ active: tool === 'laser' }"
+              @click="setTool('laser')"
+              title="Laser"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+            <button
+              class="tool-btn"
+              :class="{ active: tool === 'shape' }"
+              title="Shape"
+              @click="toggleShapePopover"
+            >
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="4" width="8" height="8" rx="1" />
+                <circle cx="17" cy="15" r="4" />
+              </svg>
+            </button>
+
+            <div class="dock-divider horizontal"></div>
+
+            <button
+              class="tool-btn"
+              :class="{ active: showTemplatePopover }"
+              title="Templates"
+              @click="toggleTemplatePopover"
+            >
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="4" width="7" height="7" rx="1" />
+                <rect x="13" y="4" width="7" height="7" rx="1" />
+                <rect x="4" y="13" width="7" height="7" rx="1" />
+                <rect x="13" y="13" width="7" height="7" rx="1" />
+              </svg>
+            </button>
+            <div class="dock-divider horizontal"></div>
+            <button
+              class="tool-btn"
+              title="Clone Selection"
+              @click="cloneSelection"
+            >
+              <svg viewBox="0 0 24 24">
+                <rect x="7" y="7" width="10" height="10" rx="1" />
+                <rect x="4" y="4" width="10" height="10" rx="1" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="bottom-toolbar right-dock">
+            <button class="icon-btn" title="Add Slide" @click="addSlide">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+            <button class="icon-btn" title="Previous Slide" @click="prevSlide">
+              <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+            <button
+              class="slide-index slide-index-btn"
+              title="Slides"
+              @click="toggleSlides"
+            >
+              {{ currentSlideIndex + 1 }} / {{ slides.length }}
+            </button>
+            <button class="icon-btn" title="Next Slide" @click="nextSlide">
+              <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            <button
+              class="icon-btn"
+              title="Delete Slide"
+              @click="deleteSlide(currentSlideIndex)"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M6 7h12l-1 14H7L6 7zm4-3h4l1 2H9l1-2z" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="pdfImportStatus.active" class="status-overlay">
+            <div
+              class="status-dialog"
+              :class="{ error: pdfImportStatus.error }"
+            >
+              <div class="status-title">Importing PDF</div>
+              <div class="status-message">{{ pdfImportStatus.message }}</div>
+              <div v-if="pdfImportStatus.total" class="status-progress">
+                <div class="status-bar">
+                  <span
+                    :style="{
+                      width: `${Math.round(
+                        (pdfImportStatus.current / pdfImportStatus.total) * 100,
+                      )}%`,
+                    }"
+                  ></span>
+                </div>
+                <div class="status-meta">
+                  {{ pdfImportStatus.current }} / {{ pdfImportStatus.total }}
+                </div>
+              </div>
+              <button
+                v-if="pdfImportStatus.error"
+                class="mini-btn"
+                @click="pdfImportStatus.active = false"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="state.selectionIds.length"
+            class="selection-toolbar"
+            :style="selectionToolbarStyle"
+          >
+            <span class="selection-count"
+              >{{ state.selectionIds.length }} selected</span
+            >
+            <button class="icon-btn" title="Duplicate" @click="cloneSelection">
+              <svg viewBox="0 0 24 24">
+                <path d="M8 8h12v12H8V8zM4 4h12v12H4V4z" />
+              </svg>
+            </button>
+            <button class="icon-btn" title="Delete" @click="deleteSelection">
+              <svg viewBox="0 0 24 24">
+                <path d="M6 7h12l-1 14H7L6 7zm4-3h4l1 2H9l1-2z" />
+              </svg>
+            </button>
+            <button
+              class="icon-btn"
+              title="Clear Selection"
+              @click="clearSelection"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M6 6l12 12M6 18L18 6" />
+              </svg>
+            </button>
+          </div>
+
+          <div
+            class="popover tool-popover pen-popover"
+            :class="{ hidden: !showPenPopover }"
+          >
+            <div class="popover-header">
+              <span>Pen</span>
+              <button class="close-btn" @click="showPenPopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="popover-row">
+              <input
+                class="popover-slider"
+                type="range"
+                min="1"
+                max="20"
+                step="0.5"
+                v-model.number="size"
+              />
+              <div class="size-stepper">
+                <button class="step-btn" @click="nudgeSize(-1, 1, 20)">
+                  -
+                </button>
+                <span>{{ Math.round(size) }}</span>
+                <button class="step-btn" @click="nudgeSize(1, 1, 20)">+</button>
+              </div>
+            </div>
+            <div class="dot-row">
+              <button
+                v-for="dot in penPresetSizes"
+                :key="`pen-${dot}`"
+                class="dot-btn"
+                :class="{ active: Math.round(size) === dot }"
+                @click="setSize(dot)"
+              >
+                <span :style="{ width: `${dot}px`, height: `${dot}px` }"></span>
+              </button>
+            </div>
+            <div class="mode-grid">
+              <button
+                class="mode-card"
+                :class="{ active: tool === 'pen' }"
+                @click="setPenMode('pen')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 20l10-10 4 4-6 6H4v-4zM14 6l2-2 4 4-2 2-4-4z" />
+                </svg>
+                <span>Pencil</span>
+              </button>
+              <button
+                class="mode-card"
+                :class="{ active: tool === 'highlighter' }"
+                @click="setPenMode('highlighter')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 20l6-6 4 4-6 6H4v-4zm6-6L16 8l3 3-6 6-3-3z" />
+                </svg>
+                <span>Brush</span>
+              </button>
+              <button
+                class="mode-card"
+                :class="{ active: tool === 'laser' }"
+                @click="setPenMode('laser')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z" />
+                </svg>
+                <span>Laser</span>
+              </button>
+            </div>
+            <div class="color-grid">
+              <div
+                v-for="swatch in colors"
+                :key="`pen-${swatch}`"
+                class="color-swatch"
+                :class="{ active: swatch === color }"
+                :style="{ background: swatch }"
+                @click="setColor(swatch)"
+              ></div>
+              <button class="color-add" title="Add color" disabled>+</button>
+            </div>
+          </div>
+
+          <div
+            class="popover tool-popover eraser-popover"
+            :class="{ hidden: !showEraserPopover }"
+          >
+            <div class="popover-header">
+              <span>Free Erase</span>
+              <button class="close-btn" @click="showEraserPopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="popover-row">
+              <input
+                class="popover-slider"
+                type="range"
+                min="6"
+                max="80"
+                step="1"
+                v-model.number="size"
+              />
+              <div class="size-stepper">
+                <button class="step-btn" @click="nudgeSize(-2, 6, 80)">
+                  -
+                </button>
+                <span>{{ Math.round(size) }}</span>
+                <button class="step-btn" @click="nudgeSize(2, 6, 80)">+</button>
+              </div>
+            </div>
+            <div class="mode-grid eraser-modes">
+              <button
+                class="mode-card"
+                :class="{ active: eraserMode === 'pixel' }"
+                @click="setEraserMode('pixel')"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M7 12l5-5 5 5-5 5-5-5z" />
+                </svg>
+                <span>Free</span>
+              </button>
+              <button
+                class="mode-card"
+                :class="{ active: eraserMode === 'area' }"
+                @click="setEraserMode('area')"
+              >
+                <svg viewBox="0 0 24 24"><path d="M5 12l3 3 8-8" /></svg>
+                <span>Element</span>
+              </button>
+              <button class="mode-card" disabled>
+                <svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 0 8 8" /></svg>
+                <span>Lasso</span>
+              </button>
+            </div>
+          </div>
+
+          <div
+            class="popover color-popover left-dock-popover"
+            :class="{ hidden: !showColorPopover }"
+          >
+            <div class="popover-header">
+              <span>Fill Colour</span>
+              <button class="close-btn" @click="showColorPopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="color-grid">
+              <div
+                v-for="swatch in colors"
+                :key="swatch"
+                class="color-swatch"
+                :class="{ active: swatch === color }"
+                :style="{ background: swatch }"
+                @click="setColor(swatch)"
+              ></div>
+            </div>
+            <div class="popover-footer">
+              <button class="mini-btn" @click="setSize(4)">+</button>
+              <button class="mini-btn" @click="setSize(8)">+</button>
+              <button class="mini-btn" @click="setSize(12)">+</button>
+              <button class="mini-btn" @click="setSize(16)">+</button>
+            </div>
+          </div>
+
+          <div
+            class="popover shape-popover"
+            :class="{ hidden: !showShapePopover }"
+            :style="shapePopoverStyle"
+          >
+            <div class="popover-header">
+              <span>Shapes</span>
+              <button class="close-btn" @click="showShapePopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="shape-layout">
+              <div class="shape-panel">
+                <div class="shape-grid">
+                  <button
+                    class="shape-btn"
+                    :class="{ active: shapeType === 'line' }"
+                    @click="setShape('line')"
+                    title="Line"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path d="M5 19L19 5" />
+                    </svg>
+                  </button>
+                  <button
+                    class="shape-btn"
+                    :class="{ active: shapeType === 'rect' }"
+                    @click="setShape('rect')"
+                    title="Rectangle"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <rect x="5" y="6" width="14" height="12" rx="2" />
+                    </svg>
+                  </button>
+                  <button
+                    class="shape-btn"
+                    :class="{ active: shapeType === 'ellipse' }"
+                    @click="setShape('ellipse')"
+                    title="Ellipse"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <ellipse cx="12" cy="12" rx="7" ry="5" />
+                    </svg>
+                  </button>
+                  <button
+                    class="shape-btn"
+                    :class="{ active: shapeType === 'icon' }"
+                    @click="setShape('icon')"
+                    title="Icon"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M12 3l2.6 5.4 6 1-4.4 4.1 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.4l6-1L12 3z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div v-if="shapeType === 'icon'" class="icon-panel">
+                <IconPicker
+                  @select="handleIconSelect"
+                  @close="showShapePopover = false"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="popover template-popover"
+            :class="{ hidden: !showTemplatePopover }"
+          >
+            <div class="popover-header">
+              <span>Templates</span>
+              <button class="close-btn" @click="showTemplatePopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="template-tabs">
+              <button
+                class="tab-btn"
+                :class="{ active: templateTab === 'default' }"
+                @click="templateTab = 'default'"
+              >
+                Default
+              </button>
+              <button
+                class="tab-btn"
+                :class="{ active: templateTab === 'custom' }"
+                @click="templateTab = 'custom'"
+              >
+                Custom
+              </button>
+            </div>
+            <div class="template-grid">
+              <template v-if="templateTab === 'default'">
+                <button
+                  v-for="tpl in defaultTemplates"
+                  :key="tpl.id"
+                  class="template-btn"
+                  :style="{ backgroundImage: `url(${tpl.preview})` }"
+                  @click="applyTemplate(tpl)"
+                >
+                  <span>{{ tpl.label }}</span>
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  class="template-btn template-upload"
+                  @click="triggerTemplateUpload"
+                >
+                  <span>Upload</span>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M12 5v10M7 10l5-5 5 5" />
+                    <path d="M5 19h14" />
+                  </svg>
+                </button>
+                <button
+                  v-for="tpl in customTemplates"
+                  :key="tpl.id"
+                  class="template-btn"
+                  :style="{ backgroundImage: `url(${tpl.preview})` }"
+                  @click="applyTemplate(tpl)"
+                >
+                  <span>{{ tpl.label }}</span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div
+            class="popover recording-popover"
+            :class="{ hidden: !showRecordings }"
+          >
+            <div class="popover-header">
+              <span>Recording</span>
+              <button class="close-btn" @click="showRecordings = false">
+                &times;
+              </button>
+            </div>
+            <div class="recording-controls">
+              <label>
+                FPS
+                <select v-model.number="recordingSettings.fps">
+                  <option :value="15">15</option>
+                  <option :value="30">30</option>
+                  <option :value="60">60</option>
+                </select>
+              </label>
+              <label>
+                Video Mbps
+                <select v-model.number="recordingSettings.videoMbps">
+                  <option :value="1.5">1.5</option>
+                  <option :value="3">3</option>
+                  <option :value="5">5</option>
+                  <option :value="8">8</option>
+                </select>
+              </label>
+            </div>
+            <div class="recording-actions">
+              <button class="pill-btn" @click="toggleRecordings">
+                {{ isRecording ? "Stop" : "Start" }}
+              </button>
+            </div>
+            <div class="recording-list">
+              <div v-if="recordings.length === 0" class="recording-empty">
+                No recordings yet
+              </div>
+              <div
+                v-for="rec in recordings"
+                :key="rec.id"
+                class="recording-item"
+              >
+                <div>
+                  <div class="recording-name">{{ rec.name }}</div>
+                  <div class="recording-meta">
+                    {{ formatBytes(rec.size) }} • {{ rec.createdAt }}
+                  </div>
+                </div>
+                <div class="recording-buttons">
+                  <button class="mini-btn" @click="downloadRecording(rec)">
+                    ↓
+                  </button>
+                  <button class="mini-btn" @click="deleteRecording(rec.id)">
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="popover settings-popover left-dock-popover"
+            :class="{ hidden: !showSettingsPopover }"
+          >
+            <div class="popover-header">
+              <span>Settings</span>
+              <button class="close-btn" @click="showSettingsPopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="settings-grid">
+              <button class="setting-btn" @click="triggerImport">
+                Import JSON
+              </button>
+              <button class="setting-btn" @click="triggerPdfImport">
+                Import PDF
+              </button>
+              <button class="setting-btn" @click="exportJson">
+                Export JSON
+              </button>
+              <button class="setting-btn" @click="exportPng">Export PNG</button>
+              <button class="setting-btn" @click="exportPdf">Export PDF</button>
+            </div>
+          </div>
+          <div v-if="showPrestart" class="prestart-backdrop">
+            <div class="prestart-modal">
+              <div class="prestart-header">
+                <strong>Pre-Start Config</strong>
+                <button class="close-btn" @click="closePrestart">
+                  &times;
+                </button>
+              </div>
+              <div class="prestart-body">
+                <div class="prestart-row">
+                  <span>Camera</span>
+                  <button class="pill-btn ghost" @click="toggleCamera">
+                    {{ avControls.cameraEnabled ? "On" : "Off" }}
+                  </button>
+                </div>
+                <div class="prestart-row">
+                  <span>Microphone</span>
+                  <button class="pill-btn ghost" @click="toggleMic">
+                    {{ avControls.micEnabled ? "On" : "Off" }}
+                  </button>
+                </div>
+                <label class="prestart-label">
+                  Camera Device
+                  <select
+                    v-model="precheck.cameraId"
+                    @change="handleCameraDeviceChange"
+                    @focus="ensureAvPermissions"
+                  >
+                    <option value="">Default</option>
+                    <option
+                      v-for="(dev, idx) in cameras"
+                      :key="dev.deviceId"
+                      :value="dev.deviceId"
+                    >
+                      {{ dev.label || `Camera ${idx + 1}` }}
+                    </option>
+                  </select>
+                </label>
+                <label class="prestart-label">
+                  Microphone Device
+                  <select
+                    v-model="precheck.micId"
+                    @change="handleMicDeviceChange"
+                    @focus="ensureAvPermissions"
+                  >
+                    <option value="">Default</option>
+                    <option
+                      v-for="(dev, idx) in microphones"
+                      :key="dev.deviceId"
+                      :value="dev.deviceId"
+                    >
+                      {{ dev.label || `Mic ${idx + 1}` }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div class="prestart-actions">
+                <button class="pill-btn ghost" @click="closePrestart">
+                  Cancel
+                </button>
+                <button class="pill-btn primary" @click="confirmPrestart">
+                  Start Class
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="slides-panel" :class="{ hidden: !showSlidesPanel }">
+        <div class="slides-header">
+          <h3>Slides</h3>
+          <button class="ghost-btn" @click="showSlidesPanel = false">
+            &times;
+          </button>
+        </div>
+        <div class="slides-controls">
+          <label><input type="checkbox" /> Select All</label>
+          <label><input type="checkbox" /> Multi-Select</label>
+        </div>
+        <div class="slides-list">
+          <div
+            v-for="(slide, index) in slides"
+            :key="slide.id"
+            class="slide-card"
+            :class="{ active: index === currentSlideIndex }"
+            @click="switchSlide(index)"
+            draggable="true"
+            @dragstart="onDragStart($event, index)"
+            @dragover.prevent="onDragOver(index)"
+            @drop.prevent="onDrop(index)"
+          >
+            <div
+              class="slide-thumb"
+              :style="
+                slide.thumb
+                  ? { backgroundImage: `url(${slide.thumb})` }
+                  : undefined
+              "
+            ></div>
+            <div class="slide-number">{{ index + 1 }}</div>
+            <button
+              class="slide-delete"
+              title="Delete slide"
+              @click.stop="deleteSlide(index)"
+            >
+              &times;
+            </button>
+          </div>
+          <div class="slide-add" @click="addSlide">+</div>
+        </div>
+      </aside>
+    </main>
+  </div>
+</template>
+
+<script setup>
+import {
+  onMounted,
+  onBeforeUnmount,
+  ref,
+  reactive,
+  computed,
+  watch,
+  nextTick,
+} from "vue";
+import { openDB } from "idb";
+import { jsPDF } from "jspdf";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker?url";
+import bootstrapIconsSprite from "bootstrap-icons/bootstrap-icons.svg?raw";
+import IconPicker from "@/components/IconPicker.vue";
+import {
+  STROKE_TYPES,
+  SHAPE_TYPES,
+  TRANSFORM_MODES,
+  SELECTION_MODES,
+  SCALE_HANDLES,
+} from "@/utils/constants.js";
+import { SelectorTool } from "@/utils/selectorTool.js";
+import {
+  migrateIconShapes,
+  migrateDeck,
+  validateStroke,
+} from "@/utils/migration.js";
+
+const templateAssetModules = import.meta.glob(
+  "./assets/templates/*.{png,jpg,jpeg,webp}",
+  { eager: true, import: "default" },
+);
+
+const zoomLabel = "2.95";
+const validRoutes = new Set(["/", "/class", "/recordings"]);
+const routePath = ref(
+  validRoutes.has(window.location.pathname) ? window.location.pathname : "/",
+);
+const colors = [
+  "#ffffff",
+  "#111111",
+  "#ff4757",
+  "#ff7f50",
+  "#ffdd59",
+  "#2ed573",
+  "#1e90ff",
+  "#5352ed",
+  "#a55eea",
+  "#f368e0",
+  "#2f3542",
+  "#70a1ff",
+  "#00d2d3",
+  "#ff9f43",
+  "#eccc68",
+  "#ff6b81",
+];
+
+const ICON_VIEWBOX = 16;
+const iconPathCache = new Map();
+
+function buildBootstrapIconLibrary(rawSvg) {
+  if (!rawSvg) return [];
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(rawSvg, "image/svg+xml");
+  const symbols = Array.from(doc.querySelectorAll("symbol"));
+  return symbols
+    .map((sym) => {
+      const id = sym.getAttribute("id");
+      const label = (id || "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (m) => m.toUpperCase());
+      const paths = Array.from(sym.querySelectorAll("path"))
+        .map((node) => node.getAttribute("d"))
+        .filter(Boolean);
+      if (!id || !paths.length) return null;
+      return { id, label, paths };
+    })
+    .filter(Boolean);
+}
+
+const ICON_LIBRARY = buildBootstrapIconLibrary(bootstrapIconsSprite);
+console.log("ICON_LIBRARY loaded:", ICON_LIBRARY.length, "icons");
+if (ICON_LIBRARY.length > 0) {
+  console.log("First icon:", ICON_LIBRARY[0]);
+}
+
+function getIconById(iconId) {
+  return ICON_LIBRARY.find((icon) => icon.id === iconId) || ICON_LIBRARY[0];
+}
+
+function getIconPaths(iconId) {
+  if (iconPathCache.has(iconId)) return iconPathCache.get(iconId);
+  const icon = getIconById(iconId);
+  if (!icon) return [];
+  const paths = icon.paths.map((d) => new Path2D(d));
+  iconPathCache.set(iconId, paths);
+  return paths;
+}
+
+function drawIconShape(ctx, iconId, rect, stroke) {
+  const paths = getIconPaths(iconId);
+  if (!paths.length) {
+    console.warn("No paths found for icon:", iconId);
+    return;
+  }
+  const scaleX = rect.w / ICON_VIEWBOX;
+  const scaleY = rect.h / ICON_VIEWBOX;
+  ctx.save();
+  ctx.translate(rect.x, rect.y);
+  ctx.scale(scaleX || 1, scaleY || 1);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(1, stroke.size / Math.max(scaleX, scaleY));
+  ctx.strokeStyle = stroke.color;
+  ctx.fillStyle = stroke.fillColor || "transparent";
+  ctx.globalAlpha = stroke.alpha;
+  ctx.globalCompositeOperation = "source-over";
+  if (stroke.fillColor) {
+    paths.forEach((path) => ctx.fill(path));
+  }
+  paths.forEach((path) => ctx.stroke(path));
+  ctx.restore();
+}
+
+const TOOL_DEFAULTS = {
+  select: { size: 0, alpha: 1, composite: "source-over" },
+  pointer: { size: 0, alpha: 1, composite: "source-over" },
+  pen: { size: 3.5, alpha: 1, composite: "source-over" },
+  highlighter: { size: 12, alpha: 0.35, composite: "source-over" },
+  eraser: { size: 22, alpha: 1, composite: "destination-out" },
+  laser: { size: 6, alpha: 1, composite: "source-over" },
+  shape: { size: 3, alpha: 1, composite: "source-over" },
+  fill: { size: 0, alpha: 1, composite: "source-over" },
+};
+
+const tool = ref("pen");
+const color = ref("#ffffff");
+const size = ref(TOOL_DEFAULTS.pen.size);
+const showColorPopover = ref(false);
+const showShapePopover = ref(false);
+const showTemplatePopover = ref(false);
+const showPenPopover = ref(false);
+const showEraserPopover = ref(false);
+const showSettingsPopover = ref(false);
+const showSlidesPanel = ref(false);
+const shapeType = ref("rect");
+const activeIcon = ref(ICON_LIBRARY[0]?.id || "star");
+const iconSearch = ref("");
+const eraserMode = ref("pixel");
+const pdfImportStatus = ref({
+  active: false,
+  message: "",
+  current: 0,
+  total: 0,
+  error: false,
+});
+const recordingSearch = ref("");
+const recordingView = ref("list");
+const templateTab = ref("default");
+const filteredIcons = computed(() => {
+  const query = iconSearch.value.trim().toLowerCase();
+  if (!query) return ICON_LIBRARY;
+  return ICON_LIBRARY.filter(
+    (icon) =>
+      icon.id.toLowerCase().includes(query) ||
+      icon.label.toLowerCase().includes(query),
+  );
+});
+
+const canvasStack = ref(null);
+const inkCanvas = ref(null);
+const backgroundCanvas = ref(null);
+const overlayCanvas = ref(null);
+const boardStage = ref(null);
+const bottomDock = ref(null);
+const leftDock = ref(null);
+const importInput = ref(null);
+const pdfInput = ref(null);
+const templateInput = ref(null);
+
+const slides = ref([]);
+const currentSlideIndex = ref(0);
+
+const inkCtx = ref(null);
+const bgCtx = ref(null);
+const overlayCtx = ref(null);
+let recordCanvas = null;
+let recordCtx = null;
+const strokeCounter = ref(0);
+const bgImageCache = new Map();
+const draggedSlideIndex = ref(null);
+
+const templates = ref([]);
+const currentTemplate = ref(null);
+const showRecordings = ref(false);
+const isRecording = ref(false);
+const recordings = ref([]);
+const recordingSettings = ref({ fps: 60, videoMbps: 8 });
+const recordingUrls = new Map();
+const previewRecording = ref(null);
+const penPresetSizes = [2, 4, 6, 8, 12, 16];
+const defaultTemplates = computed(() =>
+  templates.value.filter((tpl) => !tpl.uploaded),
+);
+const customTemplates = computed(() =>
+  templates.value.filter((tpl) => tpl.uploaded),
+);
+const showQuickToolControls = computed(() =>
+  ["pen", "highlighter", "laser"].includes(tool.value),
+);
+const quickColors = computed(() => colors.slice(0, 5));
+const cameras = ref([]);
+const microphones = ref([]);
+const precheck = reactive({
+  cameraId: "",
+  micId: "",
+});
+const avControls = reactive({
+  cameraEnabled: false,
+  cameraMuted: false,
+  micEnabled: false,
+});
+const webcam = reactive({
+  enabled: false,
+  wasEnabled: false,
+  stream: null,
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+  flip: true,
+  minimized: false,
+  prevWidth: 0,
+  prevHeight: 0,
+  aspect: 16 / 9,
+  userPlaced: false,
+  chromaEnabled: true,
+  chromaColor: "#00ff00",
+  chromaTolerance: 0.22,
+  chromaSoftness: 0.14,
+  locked: false,
+  dragging: false,
+  dragOffsetX: 0,
+  dragOffsetY: 0,
+  resizing: false,
+  resizeStartX: 0,
+  resizeStartY: 0,
+  resizeStartW: 0,
+  resizeStartH: 0,
+});
+const webcamVideo = ref(null);
+const webcamCanvas = ref(null);
+let recordingRaf = null;
+let webcamRaf = null;
+let recordingTimer = null;
+let recordingBaseMs = 0;
+const recordingStartTs = ref(null);
+const recordingElapsedMs = ref(0);
+const recordingPaused = ref(false);
+const hasAskedAvPermissions = ref(false);
+let micPreviewStream = null;
+const micLevel = ref(0);
+const micPaused = ref(false);
+const camPaused = ref(false);
+let micMeter = null;
+let micMeterInterval = null;
+let livePreviewWindow = null;
+let livePreviewRaf = null;
+const showPrestart = ref(false);
+const RECORD_WIDTH = 1920;
+const RECORD_HEIGHT = 1080;
+let recordCompositeCanvas = null;
+let recordCompositeCtx = null;
+
+const undoStyle = computed(() => ({
+  opacity: slides.value[currentSlideIndex.value]?.history?.length ? "1" : "0.4",
+}));
+const redoStyle = computed(() => ({
+  opacity: slides.value[currentSlideIndex.value]?.redoHistory?.length
+    ? "1"
+    : "0.4",
+}));
+const eraserTitle = computed(
+  () => `Eraser (${eraserMode.value === "pixel" ? "Free" : "Element"})`,
+);
+const isClassRoute = computed(() => routePath.value === "/class");
+const isDashboardRoute = computed(() => routePath.value === "/");
+const isRecordingsRoute = computed(() => routePath.value === "/recordings");
+const totalRecordingSize = computed(() =>
+  recordings.value.reduce((sum, rec) => sum + (rec.size || 0), 0),
+);
+const recordingTimeLabel = computed(() =>
+  formatDuration(recordingElapsedMs.value),
+);
+const filteredRecordings = computed(() => {
+  const query = recordingSearch.value.trim().toLowerCase();
+  if (!query) return recordings.value;
+  return recordings.value.filter((rec) => {
+    const name = (rec.name || "").toLowerCase();
+    const created = (rec.createdAt || "").toLowerCase();
+    return name.includes(query) || created.includes(query);
+  });
+});
+const selectionToolbarStyle = computed(() => {
+  if (!computedSelectionBounds.value) return {};
+  const { width, height } = getCanvasSize();
+  const bounds = computedSelectionBounds.value;
+
+  // Position at top-right corner of selection, with small offset
+  let x = bounds.right + 8;
+  let y = bounds.y - 8;
+
+  // Keep toolbar in view - if too far right, position on left
+  if (x + 180 > width) x = bounds.x - 180 - 8;
+
+  // Keep toolbar in view - if too far up, position below
+  if (y < 8) y = bounds.bottom + 8;
+
+  return {
+    position: "fixed",
+    left: `${x}px`,
+    top: `${y}px`,
+  };
+});
+
+const shapePopoverStyle = computed(() => {
+  if (!computedSelectionBounds.value || !showShapePopover.value) return {};
+  const { width, height } = getCanvasSize();
+  let x = computedSelectionBounds.value.right + 12;
+  let y = computedSelectionBounds.value.y;
+  // Keep popover in view
+  if (x + 320 > width) x = computedSelectionBounds.value.x - 320 - 12;
+  if (y + 300 > height) y = Math.max(12, height - 300);
+  return {
+    position: "fixed",
+    left: `${x}px`,
+    top: `${y}px`,
+  };
+});
+
+// Computed selection bounds - always automatically in sync with stroke positions
+const computedSelectionBounds = computed(() => {
+  const slide = getActiveSlide();
+  if (!slide || !state.selectionIds.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    if (!stroke) return;
+    const bbox = getStrokeBounds(stroke);
+    minX = Math.min(minX, bbox.minX);
+    minY = Math.min(minY, bbox.minY);
+    maxX = Math.max(maxX, bbox.maxX);
+    maxY = Math.max(maxY, bbox.maxY);
+  });
+  if (!state.selectionIds.length) return null;
+  return {
+    x: minX,
+    y: minY,
+    w: maxX - minX,
+    h: maxY - minY,
+    right: maxX,
+    bottom: maxY,
+  };
+});
+
+const state = {
+  isDrawing: false,
+  needsFlush: false,
+  pendingPoints: [],
+  cursor: { x: 0, y: 0, active: false },
+  laserTrail: [],
+  laserStart: 0,
+  overlayDirty: false,
+  selectionRect: null,
+  selectionIds: [],
+  // selectionBounds is now computed automatically (see computedSelectionBounds)
+  transform: null,
+  shapePreview: null,
+  eraseIndexMap: null,
+  erasedItems: [],
+  erasedIds: null,
+  recorder: null,
+  recordingStream: null,
+  recordingAudio: null,
+};
+
+let currentStroke = null;
+let resizeObserver = null;
+let saveTimeout = null;
+let saveInterval = null;
+let dbPromise = null;
+let deckDirty = false;
+
+const DB_NAME = "teaching-board";
+const DB_VERSION = 2;
+const STORE_DECK = "decks";
+const STORE_RECORDINGS = "recordings";
+
+function normalizeRoute(path) {
+  return validRoutes.has(path) ? path : "/";
+}
+
+function navigate(path) {
+  const next = normalizeRoute(path);
+  if (routePath.value === next) return;
+  window.history.pushState(null, "", next);
+  routePath.value = next;
+  if (next === "/recordings") {
+    loadRecordings();
+  }
+  if (next === "/class") {
+    nextTick(() => {
+      resizeCanvases();
+      updateDockMetrics();
+    });
+  }
+}
+
+function openSettingsFromDashboard() {
+  navigate("/class");
+  nextTick(() => {
+    showSettingsPopover.value = true;
+  });
+}
+
+function openPrestart() {
+  if (isRecording.value) {
+    toggleRecordings();
+    return;
+  }
+  showPrestart.value = true;
+  loadDevices();
+}
+
+function closePrestart() {
+  showPrestart.value = false;
+}
+
+function confirmPrestart() {
+  showPrestart.value = false;
+  toggleRecordings();
+}
+
+function selectAllStrokes() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  state.selectionIds = slide.strokes.map((stroke) => stroke.id);
+  updateSelectionBounds();
+  requestOverlay();
+}
+
+function invertSelection() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const allIds = slide.strokes.map((stroke) => stroke.id);
+  const selected = new Set(state.selectionIds);
+  state.selectionIds = allIds.filter((id) => !selected.has(id));
+  updateSelectionBounds();
+  requestOverlay();
+}
+
+function deleteSelection() {
+  const slide = getActiveSlide();
+  if (!slide || !state.selectionIds.length) return;
+  const items = state.selectionIds
+    .map((id) => {
+      const index = slide.strokes.findIndex((stroke) => stroke.id === id);
+      if (index < 0) return null;
+      return { stroke: slide.strokes[index], index };
+    })
+    .filter(Boolean);
+  if (!items.length) return;
+  items
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .forEach((item) => slide.strokes.splice(item.index, 1));
+  pushCommand(slide, {
+    type: "remove",
+    items: items.map((item) => ({ stroke: item.stroke, index: item.index })),
+  });
+  clearSelection();
+  redrawAll();
+  updateThumbnail();
+  markDirty();
+}
+
+function duplicateCurrentSlide() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const clone = createSlide();
+  clone.strokes = slide.strokes.map((stroke) => {
+    const next = JSON.parse(JSON.stringify(stroke));
+    if (next.type === "shape") {
+      next.id = `shape-${Math.random().toString(16).slice(2)}`;
+    } else {
+      next.id = `stroke-${Math.random().toString(16).slice(2)}`;
+    }
+    return next;
+  });
+  clone.backgroundColor = slide.backgroundColor;
+  clone.backgroundImage = slide.backgroundImage;
+  clone.backgroundSize = slide.backgroundSize
+    ? { ...slide.backgroundSize }
+    : null;
+  clone.backgroundPattern = slide.backgroundPattern
+    ? { ...slide.backgroundPattern }
+    : null;
+  clone.backgroundBitmap = slide.backgroundBitmap || null;
+  clone.thumb = slide.thumb || "";
+  slides.value.splice(currentSlideIndex.value + 1, 0, clone);
+  currentSlideIndex.value += 1;
+  renderAllThumbnails();
+  redrawAll();
+  markDirty();
+}
+
+function handlePopstate() {
+  routePath.value = normalizeRoute(window.location.pathname);
+}
+
+function createSlide() {
+  const slide = {
+    id: `slide-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    strokes: [],
+    thumb: "",
+    backgroundColor: "#111111",
+    backgroundImage: null,
+    backgroundSize: null,
+    backgroundPattern: null,
+    backgroundBitmap: null,
+    history: [],
+    redoHistory: [],
+  };
+  if (currentTemplate.value) {
+    applyTemplateToSlide(slide, currentTemplate.value);
+  }
+  return slide;
+}
+
+function getActiveSlide() {
+  return slides.value[currentSlideIndex.value];
+}
+
+function ensureHistory(slide) {
+  if (!slide.history) slide.history = [];
+  if (!slide.redoHistory) slide.redoHistory = [];
+}
+
+function pushCommand(slide, cmd) {
+  ensureHistory(slide);
+  slide.history.push(cmd);
+  slide.redoHistory = [];
+  markDirty();
+}
+
+function applyCommand(slide, cmd, direction) {
+  if (!slide) return;
+  const doApply = direction === "do";
+  switch (cmd.type) {
+    case "add": {
+      if (doApply) {
+        cmd.items.forEach((item) => {
+          slide.strokes.splice(item.index, 0, item.stroke);
+        });
+      } else {
+        cmd.items.forEach((item) => removeStrokeById(slide, item.stroke.id));
+      }
+      break;
+    }
+    case "remove": {
+      if (doApply) {
+        cmd.items.forEach((item) => removeStrokeById(slide, item.stroke.id));
+      } else {
+        cmd.items
+          .slice()
+          .sort((a, b) => a.index - b.index)
+          .forEach((item) => {
+            slide.strokes.splice(item.index, 0, item.stroke);
+          });
+      }
+      break;
+    }
+    case "transform": {
+      cmd.items.forEach((item) => {
+        const stroke = findStrokeById(slide, item.id);
+        if (!stroke) return;
+        const snapshot = doApply ? item.after : item.before;
+        applyStrokeSnapshot(stroke, snapshot);
+      });
+      break;
+    }
+    case "background": {
+      slide.backgroundColor = doApply ? cmd.after.color : cmd.before.color;
+      slide.backgroundImage = doApply ? cmd.after.image : cmd.before.image;
+      slide.backgroundSize = doApply ? cmd.after.size : cmd.before.size;
+      slide.backgroundPattern = doApply
+        ? cmd.after.pattern
+        : cmd.before.pattern;
+      slide.backgroundBitmap = doApply ? cmd.after.bitmap : cmd.before.bitmap;
+      break;
+    }
+    case "fill-shape": {
+      const stroke = findStrokeById(slide, cmd.id);
+      if (stroke) stroke.fillColor = doApply ? cmd.after : cmd.before;
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+function removeStrokeById(slide, id) {
+  const idx = slide.strokes.findIndex((s) => s.id === id);
+  if (idx >= 0) slide.strokes.splice(idx, 1);
+}
+
+function findStrokeById(slide, id) {
+  return slide.strokes.find((s) => s.id === id);
+}
+
+function applyStrokeSnapshot(stroke, snapshot) {
+  if (stroke.type === STROKE_TYPES.ICON) {
+    stroke.icon = snapshot.icon;
+    stroke.x = snapshot.x;
+    stroke.y = snapshot.y;
+    stroke.width = snapshot.width;
+    stroke.height = snapshot.height;
+    stroke.rotation = snapshot.rotation;
+    stroke.color = snapshot.color;
+    stroke.alpha = snapshot.alpha;
+    stroke.size = snapshot.size;
+    stroke.bbox = snapshot.bbox;
+  } else if (stroke.type === STROKE_TYPES.SHAPE) {
+    stroke.shape = snapshot.shape;
+    stroke.x = snapshot.x;
+    stroke.y = snapshot.y;
+    stroke.w = snapshot.w;
+    stroke.h = snapshot.h;
+    stroke.x2 = snapshot.x2;
+    stroke.y2 = snapshot.y2;
+    stroke.iconId = snapshot.iconId;
+    stroke.bbox = snapshot.bbox;
+  } else {
+    stroke.points = snapshot.points.slice();
+    stroke.bbox = snapshot.bbox;
+  }
+}
+
+function getStrokeSnapshot(stroke) {
+  if (stroke.type === STROKE_TYPES.ICON) {
+    return {
+      type: "icon",
+      icon: stroke.icon,
+      x: stroke.x,
+      y: stroke.y,
+      width: stroke.width,
+      height: stroke.height,
+      rotation: stroke.rotation,
+      color: stroke.color,
+      alpha: stroke.alpha,
+      size: stroke.size,
+      bbox: stroke.bbox ? { ...stroke.bbox } : null,
+    };
+  }
+  if (stroke.type === STROKE_TYPES.SHAPE) {
+    return {
+      shape: stroke.shape,
+      x: stroke.x,
+      y: stroke.y,
+      w: stroke.w,
+      h: stroke.h,
+      x2: stroke.x2,
+      y2: stroke.y2,
+      iconId: stroke.iconId,
+      bbox: stroke.bbox ? { ...stroke.bbox } : null,
+    };
+  }
+  return {
+    points: stroke.points.slice(),
+    bbox: stroke.bbox ? { ...stroke.bbox } : null,
+  };
+}
+
+function normalizeRect(x0, y0, x1, y1) {
+  const left = Math.min(x0, x1);
+  const top = Math.min(y0, y1);
+  const right = Math.max(x0, x1);
+  const bottom = Math.max(y0, y1);
+  return { x: left, y: top, w: right - left, h: bottom - top, right, bottom };
+}
+
+function pointInRect(point, rect) {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.right &&
+    point.y >= rect.y &&
+    point.y <= rect.bottom
+  );
+}
+
+function rectsIntersect(a, b) {
+  return !(a.right < b.x || b.right < a.x || a.bottom < b.y || b.bottom < a.y);
+}
+
+const SELECTION_HANDLE_SIZE = 8;
+const SELECTION_HANDLE_HIT = 12;
+
+function getSelectionHandles(bounds) {
+  return [
+    { id: "nw", x: bounds.x, y: bounds.y },
+    { id: "ne", x: bounds.x + bounds.w, y: bounds.y },
+    { id: "sw", x: bounds.x, y: bounds.y + bounds.h },
+    { id: "se", x: bounds.x + bounds.w, y: bounds.y + bounds.h },
+  ];
+}
+
+function getHandleAnchor(bounds, handle) {
+  switch (handle) {
+    case "nw":
+      return { x: bounds.x + bounds.w, y: bounds.y + bounds.h };
+    case "ne":
+      return { x: bounds.x, y: bounds.y + bounds.h };
+    case "sw":
+      return { x: bounds.x + bounds.w, y: bounds.y };
+    case "se":
+    default:
+      return { x: bounds.x, y: bounds.y };
+  }
+}
+
+function getSelectionHandleAt(point) {
+  if (!computedSelectionBounds.value) return null;
+  const hit = SELECTION_HANDLE_HIT / 2;
+  for (const handle of getSelectionHandles(computedSelectionBounds.value)) {
+    if (
+      Math.abs(point.x - handle.x) <= hit &&
+      Math.abs(point.y - handle.y) <= hit
+    ) {
+      return handle.id;
+    }
+  }
+  return null;
+}
+
+function drawSelectionHandles(ctx, bounds) {
+  ctx.save();
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#6c8cff";
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([]);
+  const size = SELECTION_HANDLE_SIZE;
+  const half = size / 2;
+  for (const handle of getSelectionHandles(bounds)) {
+    ctx.beginPath();
+    ctx.rect(handle.x - half, handle.y - half, size, size);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function computeBoundsFromPoints(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    const x = points[i];
+    const y = points[i + 1];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function getShapeBounds(stroke) {
+  if (stroke.shape === "line") {
+    const minX = Math.min(stroke.x, stroke.x2);
+    const maxX = Math.max(stroke.x, stroke.x2);
+    const minY = Math.min(stroke.y, stroke.y2);
+    const maxY = Math.max(stroke.y, stroke.y2);
+    return { minX, minY, maxX, maxY };
+  }
+  return {
+    minX: Math.min(stroke.x, stroke.x + stroke.w),
+    minY: Math.min(stroke.y, stroke.y + stroke.h),
+    maxX: Math.max(stroke.x, stroke.x + stroke.w),
+    maxY: Math.max(stroke.y, stroke.y + stroke.h),
+  };
+}
+
+function getStrokeBounds(stroke) {
+  if (stroke.bbox) return stroke.bbox;
+  if (stroke.type === STROKE_TYPES.ICON) {
+    // Icons have x, y, width, height properties
+    stroke.bbox = {
+      minX: stroke.x,
+      minY: stroke.y,
+      maxX: stroke.x + stroke.width,
+      maxY: stroke.y + stroke.height,
+    };
+    return stroke.bbox;
+  }
+  if (stroke.type === STROKE_TYPES.SHAPE) {
+    stroke.bbox = getShapeBounds(stroke);
+    return stroke.bbox;
+  }
+  stroke.bbox = computeBoundsFromPoints(stroke.points);
+  return stroke.bbox;
+}
+
+function getSelectionBounds(ids) {
+  const slide = getActiveSlide();
+  if (!slide || !ids.length) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  ids.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    if (!stroke) return;
+    const bbox = getStrokeBounds(stroke);
+    minX = Math.min(minX, bbox.minX);
+    minY = Math.min(minY, bbox.minY);
+    maxX = Math.max(maxX, bbox.maxX);
+    maxY = Math.max(maxY, bbox.maxY);
+  });
+  if (!ids.length) return null;
+  return {
+    x: minX,
+    y: minY,
+    w: maxX - minX,
+    h: maxY - minY,
+    right: maxX,
+    bottom: maxY,
+  };
+}
+
+// updateSelectionBounds is no longer needed - bounds are computed automatically
+// Keeping function stub for any external calls that reference it
+function updateSelectionBounds() {
+  // No-op: bounds are now computed via computedSelectionBounds
+}
+
+async function getDb() {
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_DECK)) {
+          db.createObjectStore(STORE_DECK);
+        }
+        if (!db.objectStoreNames.contains(STORE_RECORDINGS)) {
+          db.createObjectStore(STORE_RECORDINGS, { keyPath: "id" });
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+function serializeStroke(stroke) {
+  return {
+    id: stroke.id,
+    type: stroke.type,
+    tool: stroke.tool,
+    color: stroke.color,
+    size: stroke.size,
+    alpha: stroke.alpha,
+    composite: stroke.composite,
+    fillColor: stroke.fillColor || null,
+    shape: stroke.shape,
+    x: stroke.x,
+    y: stroke.y,
+    w: stroke.w,
+    h: stroke.h,
+    x2: stroke.x2,
+    y2: stroke.y2,
+    points: stroke.points,
+    bbox: stroke.bbox || null,
+  };
+}
+
+function serializeCommand(cmd) {
+  if (cmd.type === "add" || cmd.type === "remove") {
+    return {
+      ...cmd,
+      items: cmd.items.map((item) => ({
+        index: item.index,
+        stroke: serializeStroke(item.stroke),
+      })),
+    };
+  }
+  if (cmd.type === "transform") {
+    return {
+      ...cmd,
+      items: cmd.items.map((item) => ({
+        id: item.id,
+        before: item.before,
+        after: item.after,
+      })),
+    };
+  }
+  if (cmd.type === "background") {
+    return {
+      ...cmd,
+      before: { ...cmd.before, bitmap: null },
+      after: { ...cmd.after, bitmap: null },
+    };
+  }
+  return { ...cmd };
+}
+
+function serializeSlide(slide) {
+  return {
+    id: slide.id,
+    backgroundColor: slide.backgroundColor,
+    backgroundImage: slide.backgroundImage,
+    backgroundSize: slide.backgroundSize,
+    backgroundPattern: slide.backgroundPattern,
+    strokes: slide.strokes.map(serializeStroke),
+    history: (slide.history || []).map(serializeCommand),
+    redoHistory: (slide.redoHistory || []).map(serializeCommand),
+  };
+}
+
+function serializeDeck() {
+  const { width, height } = getCanvasSize();
+  return {
+    version: 1,
+    meta: { width, height },
+    currentSlideIndex: currentSlideIndex.value,
+    slides: slides.value.map(serializeSlide),
+  };
+}
+
+function hydrateStroke(stroke, scaleX, scaleY) {
+  if (stroke.type === STROKE_TYPES.SHAPE) {
+    const s = {
+      ...stroke,
+      type: "shape",
+      tool: "shape",
+      x: (stroke.x || 0) * scaleX,
+      y: (stroke.y || 0) * scaleY,
+      w: (stroke.w || 0) * scaleX,
+      h: (stroke.h || 0) * scaleY,
+      x2: (stroke.x2 || 0) * scaleX,
+      y2: (stroke.y2 || 0) * scaleY,
+    };
+    s.bbox = getShapeBounds(s);
+    return s;
+  }
+  const points = Array.isArray(stroke.points)
+    ? stroke.points.map((val, idx) =>
+        idx % 2 === 0 ? val * scaleX : val * scaleY,
+      )
+    : [];
+  const s = {
+    ...stroke,
+    type: stroke.type || "path",
+    tool: stroke.tool || "pen",
+    points,
+  };
+  s.bbox = points.length ? computeBoundsFromPoints(points) : null;
+  return s;
+}
+
+function hydrateCommand(cmd, scaleX, scaleY) {
+  if (cmd.type === "add" || cmd.type === "remove") {
+    return {
+      ...cmd,
+      items: cmd.items.map((item) => ({
+        index: item.index,
+        stroke: hydrateStroke(item.stroke, scaleX, scaleY),
+      })),
+    };
+  }
+  if (cmd.type === "transform") {
+    return {
+      ...cmd,
+      items: cmd.items.map((item) => ({
+        ...item,
+        before: scaleSnapshot(item.before, scaleX, scaleY),
+        after: scaleSnapshot(item.after, scaleX, scaleY),
+      })),
+    };
+  }
+  return cmd;
+}
+
+function scaleSnapshot(snapshot, scaleX, scaleY) {
+  if (!snapshot) return snapshot;
+  if (snapshot.shape) {
+    return {
+      ...snapshot,
+      x: snapshot.x * scaleX,
+      y: snapshot.y * scaleY,
+      w: snapshot.w * scaleX,
+      h: snapshot.h * scaleY,
+      x2: snapshot.x2 * scaleX,
+      y2: snapshot.y2 * scaleY,
+      bbox: snapshot.bbox
+        ? {
+            minX: snapshot.bbox.minX * scaleX,
+            minY: snapshot.bbox.minY * scaleY,
+            maxX: snapshot.bbox.maxX * scaleX,
+            maxY: snapshot.bbox.maxY * scaleY,
+          }
+        : null,
+    };
+  }
+  const points = Array.isArray(snapshot.points)
+    ? snapshot.points.map((val, idx) =>
+        idx % 2 === 0 ? val * scaleX : val * scaleY,
+      )
+    : [];
+  return {
+    ...snapshot,
+    points,
+    bbox: snapshot.bbox
+      ? {
+          minX: snapshot.bbox.minX * scaleX,
+          minY: snapshot.bbox.minY * scaleY,
+          maxX: snapshot.bbox.maxX * scaleX,
+          maxY: snapshot.bbox.maxY * scaleY,
+        }
+      : null,
+  };
+}
+
+function hydrateSlide(raw, scaleX, scaleY) {
+  const slide = createSlide();
+  slide.id = raw.id || slide.id;
+  slide.backgroundColor = raw.backgroundColor || "#111111";
+  slide.backgroundImage = raw.backgroundImage || null;
+  slide.backgroundSize = raw.backgroundSize || null;
+  slide.backgroundPattern = raw.backgroundPattern || null;
+  slide.strokes = (raw.strokes || []).map((s) =>
+    hydrateStroke(s, scaleX, scaleY),
+  );
+  slide.history = (raw.history || []).map((cmd) =>
+    hydrateCommand(cmd, scaleX, scaleY),
+  );
+  slide.redoHistory = (raw.redoHistory || []).map((cmd) =>
+    hydrateCommand(cmd, scaleX, scaleY),
+  );
+  slide.thumb = "";
+  return slide;
+}
+
+async function saveDeckToDb() {
+  try {
+    const db = await getDb();
+    const payload = serializeDeck();
+    await db.put(STORE_DECK, payload, "default");
+    deckDirty = false;
+  } catch (err) {
+    console.error("Failed to save deck", err);
+  }
+}
+
+function markDirty() {
+  deckDirty = true;
+  if (saveTimeout) return;
+  saveTimeout = setTimeout(() => {
+    saveTimeout = null;
+    if (deckDirty) saveDeckToDb();
+  }, 800);
+}
+
+function applyDeckPayload(payload) {
+  if (!payload) return false;
+  const { width, height } = getCanvasSize();
+  const sourceWidth = payload?.meta?.width || width;
+  const sourceHeight = payload?.meta?.height || height;
+  const scaleX = sourceWidth ? width / sourceWidth : 1;
+  const scaleY = sourceHeight ? height / sourceHeight : 1;
+
+  // Migrate deck on load to ensure all strokes use new format
+  migrateDeck(payload);
+
+  slides.value = (payload.slides || []).map((slide) =>
+    hydrateSlide(slide, scaleX, scaleY),
+  );
+  currentSlideIndex.value = Math.min(
+    payload.currentSlideIndex || 0,
+    slides.value.length - 1,
+  );
+  redrawAll();
+  renderAllThumbnails();
+  return true;
+}
+
+async function loadDeckFromDb() {
+  try {
+    const db = await getDb();
+    const payload = await db.get(STORE_DECK, "default");
+    if (!payload) return false;
+    return applyDeckPayload(payload);
+  } catch (err) {
+    console.error("Failed to load deck", err);
+    return false;
+  }
+}
+
+async function loadRecordings() {
+  try {
+    const db = await getDb();
+    const all = await db.getAll(STORE_RECORDINGS);
+    recordings.value = all
+      .map((rec) => ({
+        ...rec,
+        createdAt:
+          rec.createdAt ||
+          (rec.createdAtTs ? new Date(rec.createdAtTs).toLocaleString() : ""),
+      }))
+      .sort((a, b) => b.createdAtTs - a.createdAtTs);
+  } catch (err) {
+    console.error("Failed to load recordings", err);
+  }
+}
+
+async function saveRecording(record) {
+  try {
+    const db = await getDb();
+    await db.put(STORE_RECORDINGS, record);
+    await loadRecordings();
+  } catch (err) {
+    console.error("Failed to save recording", err);
+  }
+}
+
+async function deleteRecording(id) {
+  try {
+    const db = await getDb();
+    await db.delete(STORE_RECORDINGS, id);
+    const url = recordingUrls.get(id);
+    if (url) {
+      URL.revokeObjectURL(url);
+      recordingUrls.delete(id);
+    }
+    await loadRecordings();
+  } catch (err) {
+    console.error("Failed to delete recording", err);
+  }
+}
+
+async function loadDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    cameras.value = devices.filter((dev) => dev.kind === "videoinput");
+    microphones.value = devices.filter((dev) => dev.kind === "audioinput");
+    if (!precheck.cameraId && cameras.value.length) {
+      precheck.cameraId = cameras.value[0].deviceId;
+    }
+    if (!precheck.micId && microphones.value.length) {
+      precheck.micId = microphones.value[0].deviceId;
+    }
+  } catch (err) {
+    console.warn("Failed to load devices", err);
+  }
+}
+
+async function handleCameraDeviceChange() {
+  if (webcam.enabled) {
+    if (webcam.stream) {
+      webcam.stream.getTracks().forEach((track) => track.stop());
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: avControls.cameraEnabled
+          ? precheck.cameraId
+            ? { deviceId: { exact: precheck.cameraId } }
+            : true
+          : false,
+        audio: false,
+      });
+      webcam.stream = stream;
+      if (webcamVideo.value) webcamVideo.value.srcObject = stream;
+      setCameraEnabled(avControls.cameraEnabled, stream);
+      setCameraMuted(avControls.cameraMuted, stream);
+    } catch (err) {
+      console.warn("Failed to switch camera", err);
+    }
+  }
+}
+
+async function handleMicDeviceChange() {
+  if (isRecording.value && state.recordingAudio) {
+    console.warn("Mic device change will apply to next recording.");
+  }
+  if (micPreviewStream) {
+    stopMicPreview();
+    await startMicPreview();
+  }
+}
+
+async function toggleWebcam() {
+  if (!avControls.cameraEnabled) return;
+  if (webcam.enabled) {
+    if (webcam.stream) {
+      webcam.stream.getTracks().forEach((track) => track.stop());
+    }
+    webcam.stream = null;
+    webcam.enabled = false;
+    if (webcamVideo.value) webcamVideo.value.srcObject = null;
+    stopWebcamLoop();
+    return;
+  }
+  try {
+    let stream = null;
+    try {
+      const constraints = {
+        video: precheck.cameraId
+          ? { deviceId: { exact: precheck.cameraId } }
+          : true,
+        audio: false,
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.warn("Exact device failed, falling back to default camera", err);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+    }
+    webcam.stream = stream;
+    webcam.enabled = true;
+    positionWebcamDefault();
+    attachWebcamStream(stream);
+    setCameraEnabled(avControls.cameraEnabled, stream);
+    setCameraMuted(avControls.cameraMuted, stream);
+    updateWebcamCanvasSize();
+    loadDevices();
+    if (webcam.chromaEnabled) startWebcamLoop();
+  } catch (err) {
+    console.warn("Failed to enable webcam", err);
+  }
+}
+
+function positionWebcamDefault() {
+  if (!inkCanvas.value || !boardStage.value) return;
+  if (webcam.userPlaced) return;
+
+  const canvas = inkCanvas.value;
+  const canvasRect = canvas.getBoundingClientRect();
+
+  // Work in logical (CSS) pixels since the context has a transform applied
+  const logicalWidth = canvasRect.width;
+  const logicalHeight = canvasRect.height;
+
+  // Position in bottom-right corner with margin (in logical pixels)
+  const margin = 20;
+  webcam.x = Math.max(margin, logicalWidth - webcam.width - margin);
+  webcam.y = Math.max(margin, logicalHeight - webcam.height - margin);
+}
+
+function attachWebcamStream(stream, retry = true) {
+  if (!webcamVideo.value) {
+    if (retry) {
+      nextTick(() => attachWebcamStream(stream, false));
+    }
+    return;
+  }
+  webcamVideo.value.srcObject = stream;
+  webcamVideo.value.onloadedmetadata = () => {
+    const w = webcamVideo.value.videoWidth || 16;
+    const h = webcamVideo.value.videoHeight || 9;
+    webcam.aspect = w / h;
+    if (!webcam.width) {
+      webcam.height = 450;
+      webcam.width = Math.round(webcam.height * webcam.aspect);
+    }
+    if (!webcam.height) {
+      webcam.height = 450;
+      webcam.width = Math.round(webcam.height * webcam.aspect);
+    }
+    webcam.prevHeight = webcam.height;
+    webcam.prevWidth = webcam.width;
+    updateWebcamCanvasSize();
+    webcamVideo.value.play().catch(() => {});
+  };
+  webcamVideo.value.onresize = () => {
+    const w = webcamVideo.value.videoWidth || 16;
+    const h = webcamVideo.value.videoHeight || 9;
+    webcam.aspect = w / h;
+    if (!webcam.width) {
+      webcam.height = 450;
+      webcam.width = Math.round(webcam.height * webcam.aspect);
+    }
+    if (!webcam.height) {
+      webcam.height = 450;
+      webcam.width = Math.round(webcam.height * webcam.aspect);
+    }
+    updateWebcamCanvasSize();
+  };
+}
+
+function toggleWebcamFlip() {
+  webcam.flip = !webcam.flip;
+}
+
+function toggleWebcamMinimize() {
+  if (!webcam.enabled) return;
+  if (!webcam.minimized) {
+    webcam.prevWidth = webcam.width;
+    webcam.prevHeight = webcam.height;
+    const baseHeight = webcam.height || 450;
+    webcam.height = Math.max(140, Math.round(baseHeight * 0.6));
+    webcam.width = Math.round(webcam.height * webcam.aspect);
+    webcam.minimized = true;
+  } else {
+    webcam.width = webcam.prevWidth || Math.round(450 * webcam.aspect);
+    webcam.height = webcam.prevHeight || 450;
+    webcam.minimized = false;
+  }
+  updateWebcamCanvasSize();
+}
+
+function toggleChroma() {
+  webcam.chromaEnabled = !webcam.chromaEnabled;
+  if (webcam.chromaEnabled) {
+    startWebcamLoop();
+  } else {
+    stopWebcamLoop();
+  }
+}
+
+function setCameraEnabled(enabled, streamOverride = null) {
+  avControls.cameraEnabled = enabled;
+  const stream = streamOverride || webcam.stream;
+  stream?.getVideoTracks()?.forEach((track) => {
+    track.enabled = enabled;
+    if (!enabled) track.stop();
+  });
+  if (!enabled && webcam.enabled) {
+    webcam.wasEnabled = true;
+    webcam.enabled = false;
+    if (webcamVideo.value) webcamVideo.value.srcObject = null;
+  }
+}
+
+function setCameraMuted(muted, streamOverride = null) {
+  avControls.cameraMuted = muted;
+  const stream = streamOverride || webcam.stream;
+  stream?.getVideoTracks()?.forEach((track) => {
+    track.enabled = !muted;
+  });
+}
+
+function setMicEnabled(enabled, streamOverride = null) {
+  avControls.micEnabled = enabled;
+  const stream =
+    streamOverride || state.recordingAudio || micPreviewStream || null;
+  stream?.getAudioTracks()?.forEach((track) => {
+    track.enabled = enabled;
+  });
+  if (state.recordingAudio) {
+    state.recordingAudio.getAudioTracks()?.forEach((track) => {
+      track.enabled = enabled;
+    });
+  }
+}
+
+function setCamPaused(paused) {
+  camPaused.value = paused;
+  const stream = webcam.stream;
+  stream?.getVideoTracks()?.forEach((track) => {
+    track.enabled = !paused;
+  });
+}
+
+function setMicPaused(paused) {
+  micPaused.value = paused;
+  const stream = state.recordingAudio || micPreviewStream;
+  stream?.getAudioTracks()?.forEach((track) => {
+    track.enabled = !paused;
+  });
+}
+
+function toggleCamera() {
+  const next = !avControls.cameraEnabled;
+  setCameraEnabled(next);
+  if (next) {
+    setCamPaused(false);
+    if (!webcam.enabled || !isStreamActive(webcam.stream)) {
+      startCamera();
+    }
+    if (webcam.wasEnabled) webcam.wasEnabled = false;
+  } else if (webcam.enabled) {
+    stopCamera();
+  }
+}
+
+function startCamera() {
+  if (avControls.cameraEnabled && webcam.enabled) {
+    if (!isStreamActive(webcam.stream)) {
+      if (webcam.stream) {
+        webcam.stream.getTracks().forEach((track) => track.stop());
+      }
+      webcam.enabled = false;
+      toggleWebcam();
+    }
+    return;
+  }
+  if (!precheck.cameraId && cameras.value.length) {
+    precheck.cameraId = cameras.value[0].deviceId;
+  }
+  if (!hasAskedAvPermissions.value) {
+    ensureAvPermissions().then(() => {
+      if (!webcam.enabled) toggleWebcam();
+    });
+    if (!avControls.cameraEnabled) setCameraEnabled(true);
+    return;
+  }
+  if (!avControls.cameraEnabled) setCameraEnabled(true);
+  if (!webcam.enabled) toggleWebcam();
+}
+
+async function ensureAvPermissions() {
+  if (hasAskedAvPermissions.value) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    stream.getTracks().forEach((track) => track.stop());
+  } catch (err) {
+    // ignore, permission may be denied
+  }
+  hasAskedAvPermissions.value = true;
+  await loadDevices();
+  setTimeout(loadDevices, 200);
+}
+
+function stopCamera() {
+  if (webcam.enabled) toggleWebcam();
+  if (avControls.cameraEnabled) setCameraEnabled(false);
+  setCamPaused(false);
+}
+
+function toggleCameraMute() {
+  if (!avControls.cameraEnabled) return;
+  const next = !avControls.cameraMuted;
+  setCameraMuted(next);
+}
+
+function toggleMic() {
+  const next = !avControls.micEnabled;
+  setMicEnabled(next);
+  if (next) {
+    setMicPaused(false);
+    ensureAvPermissions().then(async () => {
+      if (micPreviewStream && !isAudioActive(micPreviewStream)) {
+        stopMicPreview();
+      }
+      if (!micPreviewStream && !isRecording.value) {
+        await startMicPreview();
+      }
+    });
+  } else {
+    stopMicPreview();
+    setMicPaused(false);
+  }
+}
+
+function toggleCamPause() {
+  if (!avControls.cameraEnabled) return;
+  setCamPaused(!camPaused.value);
+}
+
+function toggleMicPause() {
+  if (!avControls.micEnabled) return;
+  setMicPaused(!micPaused.value);
+}
+
+async function startMicPreview() {
+  if (micPreviewStream || isRecording.value) return;
+  try {
+    const audioConstraints = precheck.micId
+      ? { deviceId: { exact: precheck.micId } }
+      : true;
+    micPreviewStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+    });
+    setMicEnabled(true, micPreviewStream);
+    startMicMeter(micPreviewStream);
+    loadDevices();
+  } catch (err) {
+    console.warn("Failed to start mic preview", err);
+  }
+}
+
+function stopMicPreview() {
+  if (!micPreviewStream) return;
+  micPreviewStream.getTracks().forEach((track) => track.stop());
+  micPreviewStream = null;
+  stopMicMeter();
+}
+
+function startMicMeter(stream) {
+  if (!stream?.getAudioTracks()?.length) return;
+  stopMicMeter();
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  const ctx = new AudioCtx();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  const source = ctx.createMediaStreamSource(stream);
+  source.connect(analyser);
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  micMeter = { ctx, analyser, source };
+  micMeterInterval = setInterval(() => {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      const value = (data[i] - 128) / 128;
+      sum += value * value;
+    }
+    const rms = Math.sqrt(sum / data.length);
+    micLevel.value = Math.min(1, rms * 2.5);
+  }, 120);
+}
+
+function stopMicMeter() {
+  if (micMeterInterval) {
+    clearInterval(micMeterInterval);
+    micMeterInterval = null;
+  }
+  if (micMeter?.ctx) {
+    micMeter.ctx.close();
+  }
+  micMeter = null;
+  micLevel.value = 0;
+}
+
+function onWebcamDragStart(event) {
+  if (!webcam.enabled || webcam.locked) return;
+  if (event.target?.closest?.(".webcam-resize-handle")) return;
+
+  webcam.dragging = true;
+
+  const canvas = inkCanvas.value;
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+
+  // Mouse position in CSS pixels relative to canvas
+  const mouseCssX = event.clientX - rect.left;
+  const mouseCssY = event.clientY - rect.top;
+
+  // Calculate drag offset in logical (CSS) pixels
+  // webcam.x and webcam.y are in logical pixels (due to context transform)
+  webcam.dragOffsetX = mouseCssX - webcam.x;
+  webcam.dragOffsetY = mouseCssY - webcam.y;
+
+  window.addEventListener("pointermove", onWebcamDragMove);
+  window.addEventListener("pointerup", onWebcamDragEnd);
+}
+
+function onWebcamDragMove(event) {
+  if (!webcam.dragging || !boardStage.value || !inkCanvas.value) return;
+
+  const canvas = inkCanvas.value;
+  const canvasRect = canvas.getBoundingClientRect();
+
+  // Get mouse position in CSS coordinates relative to canvas
+  const cssMouseX = event.clientX - canvasRect.left;
+  const cssMouseY = event.clientY - canvasRect.top;
+
+  // Calculate new position in logical (CSS) pixels
+  // Apply the drag offset (which is already in CSS/logical pixels)
+  webcam.x = cssMouseX - webcam.dragOffsetX;
+  webcam.y = cssMouseY - webcam.dragOffsetY;
+
+  requestOverlay();
+}
+
+function onWebcamDragEnd() {
+  webcam.dragging = false;
+  window.removeEventListener("pointermove", onWebcamDragMove);
+  window.removeEventListener("pointerup", onWebcamDragEnd);
+}
+
+function onWebcamResizeStart(event) {
+  if (!webcam.enabled || webcam.locked) return;
+  webcam.resizing = true;
+  webcam.resizeStartX = event.clientX;
+  webcam.resizeStartY = event.clientY;
+  webcam.resizeStartW = webcam.width;
+  webcam.resizeStartH = webcam.height;
+  window.addEventListener("pointermove", onWebcamResizeMove);
+  window.addEventListener("pointerup", onWebcamResizeEnd);
+}
+
+function onWebcamResizeMove(event) {
+  if (!webcam.resizing || !inkCanvas.value) return;
+
+  const canvas = inkCanvas.value;
+  const canvasRect = canvas.getBoundingClientRect();
+
+  // Calculate change in CSS pixels (logical pixels)
+  const cssDx = event.clientX - webcam.resizeStartX;
+
+  // Apply the change directly (since webcam size is in logical pixels)
+  let nextW = Math.max(140, webcam.resizeStartW + cssDx);
+
+  let nextWidth = nextW;
+  let nextHeight = nextWidth / webcam.aspect;
+
+  if (nextHeight < 90) {
+    nextHeight = 90;
+    nextWidth = Math.round(nextHeight * webcam.aspect);
+  }
+
+  webcam.width = nextWidth;
+  webcam.height = nextHeight;
+
+  updateWebcamCanvasSize();
+}
+
+function onWebcamResizeEnd() {
+  webcam.resizing = false;
+  window.removeEventListener("pointermove", onWebcamResizeMove);
+  window.removeEventListener("pointerup", onWebcamResizeEnd);
+}
+
+function formatBytes(bytes) {
+  if (!bytes && bytes !== 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function formatDuration(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60)
+    .toString()
+    .padStart(2, "0");
+  const s = (total % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function hexToRgb(hex) {
+  if (!hex || hex[0] !== "#" || hex.length < 7) return [0, 255, 0];
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return [r, g, b];
+}
+
+function drawRoundedRectPath(ctx, x, y, w, h, r) {
+  const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function isStreamActive(stream) {
+  if (!stream) return false;
+  const tracks = stream.getVideoTracks();
+  return tracks.some((track) => track.readyState === "live");
+}
+
+function isAudioActive(stream) {
+  if (!stream) return false;
+  const tracks = stream.getAudioTracks();
+  return tracks.some((track) => track.readyState === "live");
+}
+
+function pickMimeType() {
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function startRecordingTimer() {
+  if (recordingTimer) clearInterval(recordingTimer);
+  recordingStartTs.value = Date.now();
+  recordingTimer = setInterval(() => {
+    if (!recordingStartTs.value) return;
+    recordingElapsedMs.value =
+      recordingBaseMs + (Date.now() - recordingStartTs.value);
+  }, 250);
+}
+
+function stopRecordingTimer() {
+  if (recordingTimer) clearInterval(recordingTimer);
+  recordingTimer = null;
+  recordingStartTs.value = null;
+}
+
+function pauseRecordingTimer() {
+  if (!recordingStartTs.value) return;
+  recordingBaseMs += Date.now() - recordingStartTs.value;
+  recordingStartTs.value = null;
+}
+
+function resetRecordingTimer() {
+  recordingBaseMs = 0;
+  recordingElapsedMs.value = 0;
+  recordingStartTs.value = null;
+  recordingPaused.value = false;
+}
+
+function renderRecordingFrame() {
+  if (!recordCompositeCtx || !recordCompositeCanvas) return;
+
+  const { width, height } = getCanvasSize();
+
+  recordCompositeCtx.clearRect(0, 0, RECORD_WIDTH, RECORD_HEIGHT);
+
+  const sourceAspect = width / height;
+  const recordAspect = RECORD_WIDTH / RECORD_HEIGHT;
+
+  let drawWidth, drawHeight, offsetX, offsetY;
+
+  if (sourceAspect > recordAspect) {
+    drawWidth = RECORD_WIDTH;
+    drawHeight = RECORD_WIDTH / sourceAspect;
+    offsetX = 0;
+    offsetY = (RECORD_HEIGHT - drawHeight) / 2;
+  } else {
+    drawHeight = RECORD_HEIGHT;
+    drawWidth = RECORD_HEIGHT * sourceAspect;
+    offsetY = 0;
+    offsetX = (RECORD_WIDTH - drawWidth) / 2;
+  }
+
+  // ⭐ Background
+  if (backgroundCanvas.value) {
+    recordCompositeCtx.drawImage(
+      backgroundCanvas.value,
+      0,
+      0,
+      width,
+      height,
+      offsetX,
+      offsetY,
+      drawWidth,
+      drawHeight,
+    );
+  }
+
+  // ⭐ Ink
+  if (inkCanvas.value) {
+    recordCompositeCtx.drawImage(
+      inkCanvas.value,
+      0,
+      0,
+      width,
+      height,
+      offsetX,
+      offsetY,
+      drawWidth,
+      drawHeight,
+    );
+  }
+
+  // ⭐ Scale factors from physical canvas pixels to recording pixels
+  const scaleX = drawWidth / width;
+  const scaleY = drawHeight / height;
+
+  // ⭐ Device pixel ratio to convert logical to physical pixels
+  const ratio = window.devicePixelRatio || 1;
+
+  // ⭐ Webcam (need to account for logical → physical → recording conversion)
+  drawWebcamLayerComposite(
+    recordCompositeCtx,
+    scaleX,
+    scaleY,
+    offsetX,
+    offsetY,
+    ratio,
+  );
+}
+
+function updateWebcamCanvasSize() {
+  if (webcamCanvas.value) {
+    webcamCanvas.value.width = Math.max(1, Math.floor(webcam.width));
+    webcamCanvas.value.height = Math.max(1, Math.floor(webcam.height));
+  }
+}
+
+function drawChromaToCanvas(videoEl, canvasEl, ctx) {
+  if (!videoEl || !canvasEl || !ctx) return false;
+  if (videoEl.readyState < 2) return false;
+  const width = canvasEl.width;
+  const height = canvasEl.height;
+  const vw = videoEl.videoWidth || width;
+  const vh = videoEl.videoHeight || height;
+  const scale = Math.min(width / vw, height / vh);
+  const drawW = Math.round(vw * scale);
+  const drawH = Math.round(vh * scale);
+  const drawX = Math.round((width - drawW) / 2);
+  const drawY = Math.round((height - drawH) / 2);
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(videoEl, drawX, drawY, drawW, drawH);
+  const frame = ctx.getImageData(0, 0, width, height);
+  const data = frame.data;
+  const keyR = 0;
+  const keyG = 255;
+  const keyB = 0;
+  const CHROMA_THRESHOLD = 90;
+  const CHROMA_SOFTNESS = 30;
+  const CHROMA_DIFF_THRESHOLD = 35;
+  const CHROMA_DIFF_SOFTNESS = 25;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const maxOther = Math.max(r, b);
+    const diff = g - maxOther;
+    if (diff > CHROMA_DIFF_THRESHOLD) {
+      data[i + 3] = 0;
+      continue;
+    }
+    if (diff > CHROMA_DIFF_THRESHOLD - CHROMA_DIFF_SOFTNESS) {
+      const t = (CHROMA_DIFF_THRESHOLD - diff) / CHROMA_DIFF_SOFTNESS;
+      data[i + 3] = Math.max(0, Math.min(255, data[i + 3] * t));
+      continue;
+    }
+    const dr = r - keyR;
+    const dg = g - keyG;
+    const db = b - keyB;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (dist < CHROMA_THRESHOLD - CHROMA_SOFTNESS) {
+      data[i + 3] = 0;
+    } else if (dist < CHROMA_THRESHOLD) {
+      const t = (dist - (CHROMA_THRESHOLD - CHROMA_SOFTNESS)) / CHROMA_SOFTNESS;
+      data[i + 3] = Math.max(0, Math.min(255, data[i + 3] * t));
+    }
+  }
+  ctx.putImageData(frame, 0, 0);
+  return true;
+}
+
+function drawWebcamLayer(ctx) {
+  if (!webcam.enabled || !webcamVideo.value) return;
+  if (webcam.chromaEnabled && webcamCanvas.value) {
+    ctx.save();
+    if (webcam.flip) {
+      ctx.translate(webcam.x + webcam.width, webcam.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(webcamCanvas.value, 0, 0, webcam.width, webcam.height);
+    } else {
+      ctx.drawImage(
+        webcamCanvas.value,
+        webcam.x,
+        webcam.y,
+        webcam.width,
+        webcam.height,
+      );
+    }
+    ctx.restore();
+    return;
+  }
+
+  if (webcamVideo.value.readyState < 2) return;
+  ctx.save();
+  if (webcam.flip) {
+    ctx.translate(webcam.x + webcam.width, webcam.y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(webcamVideo.value, 0, 0, webcam.width, webcam.height);
+  } else {
+    ctx.drawImage(
+      webcamVideo.value,
+      webcam.x,
+      webcam.y,
+      webcam.width,
+      webcam.height,
+    );
+  }
+  ctx.restore();
+}
+
+function drawWebcamLayerComposite(
+  ctx,
+  scaleX,
+  scaleY,
+  offsetX,
+  offsetY,
+  ratio,
+) {
+  if (!webcam.enabled) return;
+
+  const src =
+    webcam.chromaEnabled && webcamCanvas.value
+      ? webcamCanvas.value
+      : webcamVideo.value;
+
+  if (!src) return;
+
+  // webcam.x, webcam.y, webcam.width, webcam.height are in LOGICAL (CSS) pixels
+  // ratio converts logical pixels → physical canvas pixels
+  // scaleX and scaleY convert physical canvas pixels → recording pixels
+  // offsetX and offsetY are the letterbox offsets in recording space
+
+  // First convert from logical to physical canvas pixels
+  const physicalX = webcam.x * ratio;
+  const physicalY = webcam.y * ratio;
+  const physicalWidth = webcam.width * ratio;
+  const physicalHeight = webcam.height * ratio;
+
+  // Then scale from physical canvas pixels to recording pixels
+  const w = physicalWidth * scaleX;
+  const h = physicalHeight * scaleY;
+  const x = offsetX + physicalX * scaleX;
+  const y = offsetY + physicalY * scaleY;
+
+  ctx.save();
+
+  // Scale border radius proportionally
+  const scaledRadius = 14 * ratio * Math.min(scaleX, scaleY);
+  drawRoundedRectPath(ctx, x, y, w, h, scaledRadius);
+  ctx.clip();
+
+  if (webcam.flip) {
+    ctx.translate(x + w, y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(src, 0, 0, w, h);
+  } else {
+    ctx.drawImage(src, x, y, w, h);
+  }
+
+  ctx.restore();
+}
+
+function startWebcamLoop() {
+  if (webcamRaf) cancelAnimationFrame(webcamRaf);
+  const step = () => {
+    if (!webcam.enabled) {
+      webcamRaf = null;
+      return;
+    }
+    if (webcam.chromaEnabled && webcamCanvas.value && webcamVideo.value) {
+      const ctx = webcamCanvas.value.getContext("2d");
+      updateWebcamCanvasSize();
+      drawChromaToCanvas(webcamVideo.value, webcamCanvas.value, ctx);
+    }
+    webcamRaf = requestAnimationFrame(step);
+  };
+  webcamRaf = requestAnimationFrame(step);
+}
+
+function stopWebcamLoop() {
+  if (webcamRaf) cancelAnimationFrame(webcamRaf);
+  webcamRaf = null;
+}
+
+function startRecordingLoop() {
+  if (recordingRaf) cancelAnimationFrame(recordingRaf);
+  const step = () => {
+    if (!isRecording.value) return;
+    renderRecordingFrame();
+    recordingRaf = requestAnimationFrame(step);
+  };
+  recordingRaf = requestAnimationFrame(step);
+}
+
+function stopRecordingLoop() {
+  if (recordingRaf) cancelAnimationFrame(recordingRaf);
+  recordingRaf = null;
+}
+
+function startLivePreviewLoop() {
+  if (livePreviewRaf) cancelAnimationFrame(livePreviewRaf);
+  const step = () => {
+    if (!livePreviewWindow || livePreviewWindow.closed) {
+      livePreviewRaf = null;
+      return;
+    }
+    renderRecordingFrame();
+    livePreviewRaf = requestAnimationFrame(step);
+  };
+  livePreviewRaf = requestAnimationFrame(step);
+}
+
+function stopLivePreviewLoop() {
+  if (livePreviewRaf) cancelAnimationFrame(livePreviewRaf);
+  livePreviewRaf = null;
+}
+
+function toggleRecordingPause() {
+  if (!state.recorder || !isRecording.value) return;
+  if (recordingPaused.value) {
+    state.recorder.resume();
+    recordingPaused.value = false;
+    startRecordingTimer();
+  } else {
+    state.recorder.pause();
+    recordingPaused.value = true;
+    pauseRecordingTimer();
+  }
+}
+
+async function toggleRecordings() {
+  if (isRecording.value) {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+}
+
+async function startRecording() {
+  if (isRecording.value) return;
+  const fps = recordingSettings.value.fps || 30;
+  const videoBps = Math.round(
+    (recordingSettings.value.videoMbps || 3) * 1_000_000,
+  );
+  try {
+    resetRecordingTimer();
+    const captureCanvas =
+      recordCompositeCanvas || recordCanvas || inkCanvas.value;
+    const canvasStream = captureCanvas.captureStream(fps);
+    let audioStream = null;
+    try {
+      const audioConstraints = precheck.micId
+        ? { deviceId: { exact: precheck.micId } }
+        : true;
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
+      setMicEnabled(avControls.micEnabled, audioStream);
+      loadDevices();
+      startMicMeter(audioStream);
+    } catch (err) {
+      console.warn("Mic access denied or unavailable", err);
+    }
+    const mixedStream = new MediaStream();
+    canvasStream
+      .getVideoTracks()
+      .forEach((track) => mixedStream.addTrack(track));
+    if (audioStream) {
+      audioStream
+        .getAudioTracks()
+        .forEach((track) => mixedStream.addTrack(track));
+    }
+    const mimeType = pickMimeType();
+    const recorder = new MediaRecorder(mixedStream, {
+      mimeType: mimeType || undefined,
+      videoBitsPerSecond: videoBps,
+      audioBitsPerSecond: 128_000,
+    });
+    const chunks = [];
+    recorder.ondataavailable = (evt) => {
+      if (evt.data && evt.data.size) chunks.push(evt.data);
+    };
+    recorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+      const now = new Date();
+      const record = {
+        id: `rec-${now.getTime()}`,
+        name: `Recording ${now.toLocaleString()}`,
+        createdAt: now.toLocaleString(),
+        createdAtTs: now.getTime(),
+        size: blob.size,
+        mimeType: blob.type,
+        blob,
+      };
+      await saveRecording(record);
+    };
+    recorder.start(1000);
+    isRecording.value = true;
+    requestOverlay();
+    startRecordingLoop();
+    startRecordingTimer();
+    if (webcam.enabled && webcam.chromaEnabled) startWebcamLoop();
+    state.recorder = recorder;
+    state.recordingStream = mixedStream;
+    state.recordingAudio = audioStream;
+  } catch (err) {
+    console.error("Failed to start recording", err);
+  }
+}
+
+function stopRecording() {
+  if (!isRecording.value || !state.recorder) return;
+  state.recorder.stop();
+  state.recordingStream?.getTracks()?.forEach((t) => t.stop());
+  state.recordingAudio?.getTracks()?.forEach((t) => t.stop());
+  state.recorder = null;
+  state.recordingStream = null;
+  state.recordingAudio = null;
+  isRecording.value = false;
+  recordingPaused.value = false;
+  requestOverlay();
+  stopRecordingLoop();
+  stopRecordingTimer();
+  stopMicMeter();
+}
+
+function downloadRecording(rec) {
+  const url = URL.createObjectURL(rec.blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${rec.name}.webm`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function getRecordingUrl(rec) {
+  if (!rec?.blob) return "";
+  if (!recordingUrls.has(rec.id)) {
+    recordingUrls.set(rec.id, URL.createObjectURL(rec.blob));
+  }
+  return recordingUrls.get(rec.id);
+}
+
+function openRecordingPreview(rec) {
+  previewRecording.value = rec;
+}
+
+function closeRecordingPreview() {
+  previewRecording.value = null;
+}
+
+function openLivePreview() {
+  if (livePreviewWindow && !livePreviewWindow.closed) {
+    livePreviewWindow.focus();
+    return;
+  }
+  const streamSource = recordCompositeCanvas || recordCanvas || inkCanvas.value;
+  if (!streamSource?.captureStream) return;
+  renderRecordingFrame();
+  const stream = streamSource.captureStream(recordingSettings.value.fps || 30);
+  const w = window.open("", "WieTeachLivePreview", "width=900,height=520");
+  if (!w) return;
+  livePreviewWindow = w;
+  w.document.title = "WieTeach Live Preview";
+  w.document.body.style.margin = "0";
+  w.document.body.style.background = "#0f172a";
+  const video = w.document.createElement("video");
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.style.width = "100%";
+  video.style.height = "100%";
+  video.style.objectFit = "contain";
+  w.document.body.appendChild(video);
+  video.srcObject = stream;
+  w.addEventListener("beforeunload", () => {
+    stream.getTracks().forEach((t) => t.stop());
+    livePreviewWindow = null;
+    stopLivePreviewLoop();
+  });
+  if (webcam.enabled && webcam.chromaEnabled) startWebcamLoop();
+  startLivePreviewLoop();
+}
+
+function resizeCanvases() {
+  const canvas = inkCanvas.value;
+  if (!canvas || !canvasStack.value) return;
+  if (boardStage.value) {
+    const stageRect = boardStage.value.getBoundingClientRect();
+    const padding = 0;
+    const availW = Math.max(1, stageRect.width - padding);
+    const availH = Math.max(1, stageRect.height - padding);
+    const targetW = Math.min(availW, (availH * 16) / 9);
+    const targetH = (targetW * 9) / 16;
+    canvasStack.value.style.width = `${Math.floor(targetW)}px`;
+    canvasStack.value.style.height = `${Math.floor(targetH)}px`;
+  }
+  const rect = canvasStack.value.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+  canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+
+  const overlay = overlayCanvas.value;
+  overlay.width = canvas.width;
+  overlay.height = canvas.height;
+  const background = backgroundCanvas.value;
+  background.width = canvas.width;
+  background.height = canvas.height;
+  if (recordCanvas) {
+    recordCanvas.width = canvas.width;
+    recordCanvas.height = canvas.height;
+  }
+
+  inkCtx.value.setTransform(ratio, 0, 0, ratio, 0, 0);
+  bgCtx.value.setTransform(ratio, 0, 0, ratio, 0, 0);
+  overlayCtx.value.setTransform(ratio, 0, 0, ratio, 0, 0);
+  if (recordCtx) {
+    recordCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  updateDockMetrics();
+  if (
+    webcam.enabled &&
+    !webcam.dragging &&
+    !webcam.resizing &&
+    !webcam.userPlaced
+  ) {
+    positionWebcamDefault();
+  }
+  redrawAll();
+}
+
+function updateDockMetrics() {
+  if (!boardStage.value || !bottomDock.value) return;
+  const boardRect = boardStage.value.getBoundingClientRect();
+  const dockRect = bottomDock.value.getBoundingClientRect();
+  if (!dockRect.width || !dockRect.height) return;
+  const centerX = dockRect.left + dockRect.width / 2 - boardRect.left;
+  const gap = 10;
+  const bottom = Math.max(64, boardRect.bottom - dockRect.top + gap);
+  boardStage.value.style.setProperty("--dock-center-x", `${centerX}px`);
+  boardStage.value.style.setProperty("--dock-popover-bottom", `${bottom}px`);
+
+  if (leftDock.value) {
+    const leftRect = leftDock.value.getBoundingClientRect();
+    const leftX = leftRect.right - boardRect.left + 12;
+    const leftY = leftRect.top + leftRect.height / 2 - boardRect.top;
+    const leftColumn = leftRect.left - boardRect.left;
+    boardStage.value.style.setProperty("--left-dock-x", `${leftX}px`);
+    boardStage.value.style.setProperty("--left-dock-y", `${leftY}px`);
+    boardStage.value.style.setProperty("--left-dock-left", `${leftColumn}px`);
+  }
+}
+
+function getPointFromEvent(e) {
+  const rect = inkCanvas.value.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+    pressure: e.pressure || 0.5,
+  };
+}
+
+function applyStrokeStyle(ctx, stroke) {
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = stroke.size;
+  ctx.strokeStyle = stroke.color;
+  ctx.fillStyle = stroke.color;
+  ctx.globalAlpha = stroke.alpha;
+  ctx.globalCompositeOperation = stroke.composite;
+}
+
+function drawDot(ctx, stroke, x, y) {
+  ctx.beginPath();
+  ctx.arc(x, y, stroke.size / 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSegment(ctx, x0, y0, x1, y1, x2, y2) {
+  const mx1 = (x0 + x1) * 0.5;
+  const my1 = (y0 + y1) * 0.5;
+  const mx2 = (x1 + x2) * 0.5;
+  const my2 = (y1 + y2) * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(mx1, my1);
+  ctx.quadraticCurveTo(x1, y1, mx2, my2);
+  ctx.stroke();
+}
+
+function startStroke(point) {
+  const base = TOOL_DEFAULTS[tool.value];
+  const stroke = {
+    id: `stroke-${strokeCounter.value++}`,
+    type: "path",
+    tool: tool.value,
+    color: tool.value === "eraser" ? "#000000" : color.value,
+    size: size.value,
+    alpha: base.alpha,
+    composite: base.composite,
+    points: [],
+    bbox: { minX: point.x, minY: point.y, maxX: point.x, maxY: point.y },
+  };
+
+  stroke.points.push(point.x, point.y);
+  applyStrokeStyle(inkCtx.value, stroke);
+  if (tool.value === "pen" || tool.value === "highlighter") {
+    inkCtx.value.globalCompositeOperation = "source-over";
+  }
+  if (tool.value === "eraser") {
+    inkCtx.value.globalCompositeOperation = "destination-out";
+  }
+
+  const slide = getActiveSlide();
+  slide.strokes.push(stroke);
+  ensureHistory(slide);
+  slide.redoHistory = [];
+  return stroke;
+}
+
+function flushStroke() {
+  state.needsFlush = false;
+  if (!state.isDrawing || !currentStroke) return;
+
+  const pts = state.pendingPoints;
+  state.pendingPoints = [];
+  if (!pts.length) return;
+
+  // Ensure eraser always uses destination-out while drawing.
+  if (currentStroke.tool === "eraser") {
+    inkCtx.value.globalCompositeOperation = "destination-out";
+  } else {
+    inkCtx.value.globalCompositeOperation = "source-over";
+  }
+  if (recordCtx) {
+    applyStrokeStyle(recordCtx, currentStroke);
+    recordCtx.globalCompositeOperation =
+      currentStroke.tool === "eraser" ? "destination-out" : "source-over";
+  }
+
+  const data = currentStroke.points;
+  for (let i = 0; i < pts.length; i += 2) {
+    data.push(pts[i], pts[i + 1]);
+    if (currentStroke.bbox) {
+      currentStroke.bbox.minX = Math.min(currentStroke.bbox.minX, pts[i]);
+      currentStroke.bbox.minY = Math.min(currentStroke.bbox.minY, pts[i + 1]);
+      currentStroke.bbox.maxX = Math.max(currentStroke.bbox.maxX, pts[i]);
+      currentStroke.bbox.maxY = Math.max(currentStroke.bbox.maxY, pts[i + 1]);
+    }
+    const len = data.length;
+    if (len === 2) {
+      drawDot(inkCtx.value, currentStroke, data[0], data[1]);
+      if (recordCtx) drawDot(recordCtx, currentStroke, data[0], data[1]);
+      continue;
+    }
+    if (len >= 6) {
+      const x0 = data[len - 6];
+      const y0 = data[len - 5];
+      const x1 = data[len - 4];
+      const y1 = data[len - 3];
+      const x2 = data[len - 2];
+      const y2 = data[len - 1];
+      drawSegment(inkCtx.value, x0, y0, x1, y1, x2, y2);
+      if (recordCtx) drawSegment(recordCtx, x0, y0, x1, y1, x2, y2);
+    }
+  }
+}
+
+function scheduleFlush() {
+  if (state.needsFlush) return;
+  state.needsFlush = true;
+  requestAnimationFrame(flushStroke);
+}
+
+function drawBootstrapIcon(ctx, iconStroke) {
+  // Render a Bootstrap icon from the icon library
+  if (!iconStroke.icon) return;
+
+  const icon = getIconById(iconStroke.icon);
+  if (!icon || !icon.paths || icon.paths.length === 0) return;
+
+  const paths = getIconPaths(iconStroke.icon);
+  if (!paths.length) return;
+
+  ctx.save();
+  ctx.globalAlpha = iconStroke.alpha || 1;
+  ctx.globalCompositeOperation = "source-over";
+
+  // Translate to center for rotation
+  const centerX = iconStroke.x + iconStroke.width / 2;
+  const centerY = iconStroke.y + iconStroke.height / 2;
+
+  ctx.translate(centerX, centerY);
+  if (iconStroke.rotation) {
+    ctx.rotate((iconStroke.rotation * Math.PI) / 180);
+  }
+  ctx.translate(-centerX, -centerY);
+
+  // Draw the icon paths scaled to fit the dimensions - use uniform scale to maintain aspect ratio
+  const scale = Math.min(
+    iconStroke.width / ICON_VIEWBOX,
+    iconStroke.height / ICON_VIEWBOX,
+  );
+  const offsetX = (iconStroke.width - scale * ICON_VIEWBOX) / 2;
+  const offsetY = (iconStroke.height - scale * ICON_VIEWBOX) / 2;
+
+  ctx.translate(iconStroke.x + offsetX, iconStroke.y + offsetY);
+  ctx.scale(scale, scale);
+
+  ctx.strokeStyle = iconStroke.color || "#000000";
+  ctx.fillStyle = iconStroke.color || "#000000";
+  ctx.lineWidth = Math.max(0.5, 2 / scale);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  paths.forEach((path) => {
+    ctx.stroke(path);
+  });
+
+  ctx.restore();
+}
+
+function renderStroke(ctx, stroke) {
+  // Handle Bootstrap icon shapes (new type)
+  if (stroke.type === STROKE_TYPES.ICON) {
+    drawBootstrapIcon(ctx, stroke);
+    return;
+  }
+
+  if (stroke.type === STROKE_TYPES.SHAPE) {
+    if (stroke.shape === SHAPE_TYPES.ICON) {
+      drawIconShape(
+        ctx,
+        stroke.iconId || ICON_LIBRARY[0]?.id || "star",
+        { x: stroke.x, y: stroke.y, w: stroke.w, h: stroke.h },
+        stroke,
+      );
+      return;
+    }
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = stroke.size;
+    ctx.strokeStyle = stroke.color;
+    ctx.fillStyle = stroke.fillColor || "transparent";
+    ctx.globalAlpha = stroke.alpha;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.beginPath();
+    if (stroke.shape === "line") {
+      ctx.moveTo(stroke.x, stroke.y);
+      ctx.lineTo(stroke.x2, stroke.y2);
+      ctx.stroke();
+    } else if (stroke.shape === SHAPE_TYPES.ELLIPSE) {
+      const cx = stroke.x + stroke.w / 2;
+      const cy = stroke.y + stroke.h / 2;
+      ctx.ellipse(
+        cx,
+        cy,
+        Math.abs(stroke.w / 2),
+        Math.abs(stroke.h / 2),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      if (stroke.fillColor) ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.rect(stroke.x, stroke.y, stroke.w, stroke.h);
+      if (stroke.fillColor) ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+  if (!stroke.points || stroke.points.length === 0) return;
+  applyStrokeStyle(ctx, stroke);
+  ctx.globalCompositeOperation =
+    stroke.tool === "eraser" ? "destination-out" : "source-over";
+  const pts = stroke.points;
+  if (pts.length === 2) {
+    drawDot(ctx, stroke, pts[0], pts[1]);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(pts[0], pts[1]);
+  for (let i = 2; i < pts.length - 2; i += 2) {
+    const x1 = pts[i];
+    const y1 = pts[i + 1];
+    const x2 = pts[i + 2];
+    const y2 = pts[i + 3];
+    const mx = (x1 + x2) * 0.5;
+    const my = (y1 + y2) * 0.5;
+    ctx.quadraticCurveTo(x1, y1, mx, my);
+  }
+  ctx.stroke();
+}
+
+function drawBackground(ctx, slide, width, height) {
+  if (slide.backgroundPattern) {
+    ctx.fillStyle = slide.backgroundColor || "#111111";
+    ctx.fillRect(0, 0, width, height);
+    drawTemplatePattern(ctx, slide.backgroundPattern, width, height);
+    return;
+  }
+  if (slide.backgroundBitmap) {
+    const bw = slide.backgroundBitmap.width;
+    const bh = slide.backgroundBitmap.height;
+    const scale = Math.min(width / bw, height / bh);
+    const drawW = bw * scale;
+    const drawH = bh * scale;
+    const dx = (width - drawW) * 0.5;
+    const dy = (height - drawH) * 0.5;
+    ctx.drawImage(slide.backgroundBitmap, dx, dy, drawW, drawH);
+    return;
+  }
+  if (slide.backgroundImage) {
+    const img = getBackgroundImage(slide.backgroundImage);
+    if (img && img.complete && img.naturalWidth) {
+      const scale = Math.min(
+        width / img.naturalWidth,
+        height / img.naturalHeight,
+      );
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      const dx = (width - drawW) * 0.5;
+      const dy = (height - drawH) * 0.5;
+      ctx.drawImage(img, dx, dy, drawW, drawH);
+      return;
+    }
+  }
+  ctx.fillStyle = slide.backgroundColor || "#111111";
+  ctx.fillRect(0, 0, width, height);
+}
+
+function getBackgroundImage(src) {
+  if (!src) return null;
+  if (bgImageCache.has(src)) return bgImageCache.get(src);
+  const img = new Image();
+  img.onload = () => {
+    bgImageCache.set(src, img);
+    redrawAll();
+    renderAllThumbnails();
+  };
+  img.src = src;
+  bgImageCache.set(src, img);
+  return img;
+}
+
+function redrawAll() {
+  const rect = inkCanvas.value.getBoundingClientRect();
+  inkCtx.value.clearRect(0, 0, rect.width, rect.height);
+  bgCtx.value.clearRect(0, 0, rect.width, rect.height);
+  if (recordCtx) {
+    recordCtx.clearRect(0, 0, rect.width, rect.height);
+  }
+  const slide = getActiveSlide();
+  if (!slide) return;
+  bgCtx.value.save();
+  drawBackground(bgCtx.value, slide, rect.width, rect.height);
+  bgCtx.value.restore();
+  if (recordCtx) {
+    recordCtx.save();
+    drawBackground(recordCtx, slide, rect.width, rect.height);
+    recordCtx.restore();
+  }
+  for (const stroke of slide.strokes) {
+    renderStroke(inkCtx.value, stroke);
+    if (recordCtx) renderStroke(recordCtx, stroke);
+  }
+  updateThumbnail();
+  if (state.selectionIds.length) {
+    const slideStrokes = new Set(slide.strokes.map((s) => s.id));
+    state.selectionIds = state.selectionIds.filter((id) =>
+      slideStrokes.has(id),
+    );
+    updateSelectionBounds();
+  }
+}
+
+function updateThumbnail() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const thumbCanvas = document.createElement("canvas");
+  const targetW = 200;
+  const targetH = 150;
+  thumbCanvas.width = targetW;
+  thumbCanvas.height = targetH;
+  const tctx = thumbCanvas.getContext("2d");
+  tctx.clearRect(0, 0, targetW, targetH);
+  drawBackground(tctx, slide, targetW, targetH);
+  tctx.drawImage(inkCanvas.value, 0, 0, targetW, targetH);
+  slide.thumb = thumbCanvas.toDataURL("image/png");
+}
+
+function renderSlideToThumb(slide) {
+  const rect = inkCanvas.value.getBoundingClientRect();
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = rect.width;
+  tempCanvas.height = rect.height;
+  const tctx = tempCanvas.getContext("2d");
+  drawBackground(tctx, slide, tempCanvas.width, tempCanvas.height);
+  for (const stroke of slide.strokes) {
+    renderStroke(tctx, stroke);
+  }
+  const thumbCanvas = document.createElement("canvas");
+  const targetW = 200;
+  const targetH = 150;
+  thumbCanvas.width = targetW;
+  thumbCanvas.height = targetH;
+  const thumbCtx = thumbCanvas.getContext("2d");
+  drawBackground(thumbCtx, slide, targetW, targetH);
+  thumbCtx.drawImage(tempCanvas, 0, 0, targetW, targetH);
+  slide.thumb = thumbCanvas.toDataURL("image/png");
+}
+
+function renderAllThumbnails() {
+  slides.value.forEach((slide) => renderSlideToThumb(slide));
+}
+
+function switchSlide(index) {
+  if (
+    index === currentSlideIndex.value ||
+    index < 0 ||
+    index >= slides.value.length
+  )
+    return;
+  updateThumbnail();
+  currentSlideIndex.value = index;
+  clearSelection();
+  redrawAll();
+  markDirty();
+}
+
+function addSlide() {
+  slides.value.push(createSlide());
+  currentSlideIndex.value = slides.value.length - 1;
+  clearSelection();
+  redrawAll();
+  markDirty();
+}
+
+function prevSlide() {
+  switchSlide(currentSlideIndex.value - 1);
+}
+
+function nextSlide() {
+  switchSlide(currentSlideIndex.value + 1);
+}
+
+function clearSlides() {
+  slides.value = [createSlide()];
+  currentSlideIndex.value = 0;
+  clearSelection();
+  redrawAll();
+  markDirty();
+}
+
+function undo() {
+  const slide = getActiveSlide();
+  if (!slide || !slide.history?.length) return;
+  const cmd = slide.history.pop();
+  applyCommand(slide, cmd, "undo");
+  slide.redoHistory.push(cmd);
+  redrawAll();
+  markDirty();
+}
+
+function redo() {
+  const slide = getActiveSlide();
+  if (!slide || !slide.redoHistory?.length) return;
+  const cmd = slide.redoHistory.pop();
+  applyCommand(slide, cmd, "do");
+  slide.history.push(cmd);
+  redrawAll();
+  markDirty();
+}
+
+function setTool(nextTool) {
+  tool.value = nextTool;
+  const defaults = TOOL_DEFAULTS[nextTool];
+  if (defaults && defaults.size) {
+    size.value = defaults.size;
+  }
+  if (nextTool !== "select") {
+    clearSelection();
+  }
+  if (nextTool !== "shape") {
+    showShapePopover.value = false;
+  }
+  if (nextTool !== "pen") {
+    showPenPopover.value = false;
+  }
+  if (nextTool !== "eraser") {
+    showEraserPopover.value = false;
+  }
+  showSettingsPopover.value = false;
+  if (nextTool !== "fill") {
+    showTemplatePopover.value = false;
+  }
+  requestOverlay();
+}
+
+function setColor(nextColor) {
+  color.value = nextColor;
+}
+
+function setSize(nextSize) {
+  size.value = nextSize;
+}
+
+function nudgeSize(delta, min = 1, max = 40) {
+  const next = Math.min(max, Math.max(min, Math.round(size.value + delta)));
+  size.value = next;
+}
+
+function setPenMode(mode) {
+  setTool(mode);
+  showPenPopover.value = true;
+  showEraserPopover.value = false;
+}
+
+function setEraserMode(mode) {
+  eraserMode.value = mode;
+  setTool("eraser");
+  showEraserPopover.value = true;
+  showPenPopover.value = false;
+}
+
+function toggleColorPopover() {
+  showColorPopover.value = !showColorPopover.value;
+  if (showColorPopover.value) {
+    showShapePopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function toggleFillPopover() {
+  if (tool.value !== "fill") {
+    setTool("fill");
+  }
+  showColorPopover.value = !showColorPopover.value;
+  if (showColorPopover.value) {
+    showShapePopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function toggleSlides() {
+  showSlidesPanel.value = !showSlidesPanel.value;
+}
+
+function toggleSettingsPopover() {
+  showSettingsPopover.value = !showSettingsPopover.value;
+  if (showSettingsPopover.value) {
+    showShapePopover.value = false;
+    showTemplatePopover.value = false;
+    showColorPopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+  }
+}
+
+function togglePenPopover() {
+  if (tool.value !== "pen") {
+    setTool("pen");
+  }
+  showPenPopover.value = !showPenPopover.value;
+  if (showPenPopover.value) {
+    showShapePopover.value = false;
+    showTemplatePopover.value = false;
+    showColorPopover.value = false;
+    showEraserPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function toggleEraserPopover() {
+  if (tool.value !== "eraser") {
+    setTool("eraser");
+  }
+  showEraserPopover.value = !showEraserPopover.value;
+  if (showEraserPopover.value) {
+    showShapePopover.value = false;
+    showTemplatePopover.value = false;
+    showColorPopover.value = false;
+    showPenPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function toggleTemplatePopover() {
+  showTemplatePopover.value = !showTemplatePopover.value;
+  if (showTemplatePopover.value) {
+    showColorPopover.value = false;
+    showShapePopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function triggerTemplateUpload() {
+  if (!templateInput.value) return;
+  templateInput.value.value = "";
+  templateInput.value.click();
+}
+
+async function handleTemplateUpload(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) continue;
+    const dataUrl = await blobToDataURL(file);
+    const label = file.name.replace(/\.[^/.]+$/, "");
+    const id = `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const preview = await createImagePreview(dataUrl);
+    const size = await getImageSize(dataUrl);
+    templates.value.push({
+      id,
+      label,
+      color: "#111111",
+      pattern: "image",
+      image: dataUrl,
+      preview,
+      size,
+      bitmap: null,
+      uploaded: true,
+    });
+  }
+  saveStoredTemplates();
+}
+
+function createImagePreview(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const cssWidth = 140;
+      const cssHeight = 90;
+      const scale = Math.min(2, window.devicePixelRatio || 1);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(cssWidth * scale);
+      canvas.height = Math.round(cssHeight * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.fillStyle = "#111111";
+      ctx.fillRect(0, 0, cssWidth, cssHeight);
+      const fit = Math.min(cssWidth / img.width, cssHeight / img.height);
+      const w = img.width * fit;
+      const h = img.height * fit;
+      ctx.drawImage(img, (cssWidth - w) / 2, (cssHeight - h) / 2, w, h);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+}
+
+function getImageSize(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.width, height: img.height });
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+function applyTemplate(template) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const patternPayload = getPatternPayload(template);
+  const before = {
+    color: slide.backgroundColor,
+    image: slide.backgroundImage,
+    size: slide.backgroundSize,
+    pattern: slide.backgroundPattern,
+    bitmap: slide.backgroundBitmap,
+  };
+  applyTemplateToSlide(slide, {
+    color: template.color || "#111111",
+    image: template.image || null,
+    size: template.size || null,
+    pattern: patternPayload,
+    bitmap: template.bitmap || null,
+  });
+  pushCommand(slide, {
+    type: "background",
+    before,
+    after: {
+      ...before,
+      color: slide.backgroundColor,
+      image: slide.backgroundImage,
+      size: slide.backgroundSize,
+      pattern: slide.backgroundPattern,
+      bitmap: slide.backgroundBitmap,
+    },
+  });
+  currentTemplate.value = {
+    color: slide.backgroundColor,
+    image: slide.backgroundImage,
+    size: slide.backgroundSize,
+    pattern: slide.backgroundPattern,
+    bitmap: null,
+  };
+  showTemplatePopover.value = false;
+  redrawAll();
+}
+
+function applyTemplateToSlide(slide, payload) {
+  slide.backgroundColor = payload.color || "#111111";
+  slide.backgroundImage = payload.image || null;
+  slide.backgroundSize = payload.size || null;
+  slide.backgroundPattern = payload.pattern || null;
+  slide.backgroundBitmap = payload.bitmap || null;
+}
+
+function getPatternPayload(template) {
+  if (!template?.pattern || template.pattern === "none") return null;
+  if (template.pattern === "image") return null;
+  return {
+    pattern: template.pattern,
+    color: template.color,
+    step: template.step,
+    line: template.line,
+    lineMajor: template.lineMajor,
+    dot: template.dot,
+    radius: template.radius,
+    margin: template.margin,
+    header: template.header,
+    group: template.group,
+  };
+}
+
+function onDragStart(event, index) {
+  draggedSlideIndex.value = index;
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  }
+}
+
+function onDragOver(index) {
+  if (draggedSlideIndex.value === null || draggedSlideIndex.value === index)
+    return;
+}
+
+function onDrop(index) {
+  if (draggedSlideIndex.value === null || draggedSlideIndex.value === index)
+    return;
+  const from = draggedSlideIndex.value;
+  const to = index;
+  const list = slides.value.slice();
+  const [moved] = list.splice(from, 1);
+  list.splice(to, 0, moved);
+  slides.value = list;
+  currentSlideIndex.value = to;
+  draggedSlideIndex.value = null;
+  renderAllThumbnails();
+  markDirty();
+}
+
+function deleteSlide(index) {
+  if (slides.value.length === 1) return;
+  slides.value.splice(index, 1);
+  if (currentSlideIndex.value >= slides.value.length) {
+    currentSlideIndex.value = slides.value.length - 1;
+  }
+  redrawAll();
+  markDirty();
+}
+
+function clearCurrentSlide() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  slide.strokes = [];
+  slide.history = [];
+  slide.redoHistory = [];
+  redrawAll();
+  markDirty();
+}
+
+function toggleShapePopover() {
+  showShapePopover.value = !showShapePopover.value;
+  if (showShapePopover.value) {
+    showColorPopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+  }
+  setTool("shape");
+}
+
+function setShape(nextShape) {
+  shapeType.value = nextShape;
+  setTool("shape");
+  if (nextShape !== "icon") {
+    showShapePopover.value = false;
+  }
+}
+
+function setShapeIcon(iconId) {
+  activeIcon.value = iconId;
+  shapeType.value = "icon";
+  setTool("shape");
+  showShapePopover.value = false;
+}
+
+function handleIconSelect(iconName) {
+  activeIcon.value = iconName;
+  addIconToCanvas(iconName);
+  showShapePopover.value = false;
+}
+
+function addIconToCanvas(iconName) {
+  const slide = getActiveSlide();
+  const centerX = (boardStage.value?.offsetWidth || 800) / 2 - 20;
+  const centerY = (boardStage.value?.offsetHeight || 600) / 2 - 20;
+
+  const iconShape = {
+    id: `icon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    type: "icon",
+    icon: iconName,
+    x: centerX,
+    y: centerY,
+    width: 40,
+    height: 40,
+    rotation: 0,
+    color: color.value,
+    alpha: 1,
+    size: 40,
+  };
+
+  if (!slide.strokes) {
+    slide.strokes = [];
+  }
+  slide.strokes.push(iconShape);
+  ensureHistory(slide);
+  slide.redoHistory = [];
+  requestCanvasRender();
+}
+
+function clearSelection() {
+  state.selectionIds = [];
+  // selectionBounds will automatically become null via computed property
+  requestOverlay();
+}
+
+function beginSelectionRect(mode, point) {
+  state.selectionRect = {
+    mode,
+    x0: point.x,
+    y0: point.y,
+    x1: point.x,
+    y1: point.y,
+  };
+  requestOverlay();
+}
+
+function finalizeSelectionRect() {
+  if (!state.selectionRect) return;
+  const rect = normalizeRect(
+    state.selectionRect.x0,
+    state.selectionRect.y0,
+    state.selectionRect.x1,
+    state.selectionRect.y1,
+  );
+  const slide = getActiveSlide();
+  if (!slide) return;
+  if (state.selectionRect.mode === SELECTION_MODES.SELECT) {
+    const ids = slide.strokes
+      .filter(
+        (stroke) =>
+          stroke.tool !== "eraser" &&
+          rectsIntersect(rect, toRect(getStrokeBounds(stroke))),
+      )
+      .map((stroke) => stroke.id);
+    state.selectionIds = ids;
+    updateSelectionBounds();
+  } else if (state.selectionRect.mode === SELECTION_MODES.ERASE) {
+    const removeItems = [];
+    slide.strokes.forEach((stroke, index) => {
+      if (stroke.tool === "eraser") return;
+      if (rectsIntersect(rect, toRect(getStrokeBounds(stroke)))) {
+        removeItems.push({ stroke, index });
+      }
+    });
+    if (removeItems.length) {
+      pushCommand(slide, { type: "remove", items: removeItems });
+      removeItems.forEach((item) => removeStrokeById(slide, item.stroke.id));
+    }
+    clearSelection();
+  }
+  state.selectionRect = null;
+  redrawAll();
+}
+
+function toRect(bbox) {
+  return {
+    x: bbox.minX,
+    y: bbox.minY,
+    w: bbox.maxX - bbox.minX,
+    h: bbox.maxY - bbox.minY,
+    right: bbox.maxX,
+    bottom: bbox.maxY,
+  };
+}
+
+function startTransform(mode, point, handle = null) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const base = new Map();
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    if (stroke) base.set(id, getStrokeSnapshot(stroke));
+  });
+  state.transform = {
+    mode,
+    startX: point.x,
+    startY: point.y,
+    base,
+    bounds: computedSelectionBounds.value
+      ? { ...computedSelectionBounds.value }
+      : null,
+    handle,
+  };
+}
+
+function applyMoveTransform(dx, dy) {
+  const slide = getActiveSlide();
+  if (!slide || !state.transform) return;
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    const snapshot = state.transform.base.get(id);
+    if (!stroke || !snapshot) return;
+    if (stroke.type === STROKE_TYPES.ICON) {
+      stroke.x = snapshot.x + dx;
+      stroke.y = snapshot.y + dy;
+      stroke.bbox = getStrokeBounds(stroke);
+    } else if (stroke.type === STROKE_TYPES.SHAPE) {
+      stroke.x = snapshot.x + dx;
+      stroke.y = snapshot.y + dy;
+      if (stroke.shape === SHAPE_TYPES.LINE) {
+        stroke.x2 = snapshot.x2 + dx;
+        stroke.y2 = snapshot.y2 + dy;
+      }
+      stroke.bbox = getShapeBounds(stroke);
+    } else {
+      stroke.points = snapshot.points.map((val, idx) =>
+        idx % 2 === 0 ? val + dx : val + dy,
+      );
+      stroke.bbox = computeBoundsFromPoints(stroke.points);
+    }
+  });
+  updateSelectionBounds();
+  redrawAll();
+  requestOverlay();
+}
+
+function applyScaleTransform(dx, dy, point) {
+  const slide = getActiveSlide();
+  if (!slide || !state.transform || !state.transform.bounds) return;
+  const { bounds, handle } = state.transform;
+  let scaleX = bounds.w ? 1 + dx / bounds.w : 1;
+  let scaleY = bounds.h ? 1 + dy / bounds.h : 1;
+  let originX = bounds.x + bounds.w / 2;
+  let originY = bounds.y + bounds.h / 2;
+
+  if (handle && point) {
+    const anchor = getHandleAnchor(bounds, handle);
+    const nextW = Math.max(12, Math.abs(anchor.x - point.x));
+    const nextH = Math.max(12, Math.abs(anchor.y - point.y));
+    scaleX = bounds.w ? nextW / bounds.w : 1;
+    scaleY = bounds.h ? nextH / bounds.h : 1;
+    originX = anchor.x;
+    originY = anchor.y;
+  }
+
+  scaleX = Math.max(0.05, scaleX);
+  scaleY = Math.max(0.05, scaleY);
+
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    const snapshot = state.transform.base.get(id);
+    if (!stroke || !snapshot) return;
+    if (stroke.type === STROKE_TYPES.ICON) {
+      // Maintain aspect ratio for icons - use uniform scale
+      const uniformScale = Math.max(scaleX, scaleY);
+      stroke.x = originX + (snapshot.x - originX) * scaleX;
+      stroke.y = originY + (snapshot.y - originY) * scaleY;
+      stroke.width = Math.max(12, snapshot.width * uniformScale);
+      stroke.height = Math.max(12, snapshot.height * uniformScale);
+    } else if (stroke.type === STROKE_TYPES.SHAPE) {
+      if (stroke.shape === SHAPE_TYPES.LINE) {
+        stroke.x = originX + (snapshot.x - originX) * scaleX;
+        stroke.y = originY + (snapshot.y - originY) * scaleY;
+        stroke.x2 = originX + (snapshot.x2 - originX) * scaleX;
+        stroke.y2 = originY + (snapshot.y2 - originY) * scaleY;
+      } else {
+        stroke.x = originX + (snapshot.x - originX) * scaleX;
+        stroke.y = originY + (snapshot.y - originY) * scaleY;
+        stroke.w = snapshot.w * scaleX;
+        stroke.h = snapshot.h * scaleY;
+      }
+      stroke.bbox = getShapeBounds(stroke);
+    } else {
+      const pts = snapshot.points;
+      const newPoints = [];
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = originX + (pts[i] - originX) * scaleX;
+        const y = originY + (pts[i + 1] - originY) * scaleY;
+        newPoints.push(x, y);
+      }
+      stroke.points = newPoints;
+      stroke.bbox = computeBoundsFromPoints(newPoints);
+    }
+  });
+  updateSelectionBounds();
+  redrawAll();
+  requestOverlay();
+}
+
+function finalizeTransform() {
+  const slide = getActiveSlide();
+  if (!slide || !state.transform) return;
+  const items = [];
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    const before = state.transform.base.get(id);
+    if (!stroke || !before) return;
+    const after = getStrokeSnapshot(stroke);
+    items.push({ id, before, after });
+  });
+  if (items.length) {
+    pushCommand(slide, { type: "transform", items });
+  }
+  state.transform = null;
+}
+
+function cloneSelection() {
+  const slide = getActiveSlide();
+  if (!slide || !state.selectionIds.length) return;
+  const newIds = [];
+  const items = [];
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    if (!stroke) return;
+    const clone = JSON.parse(JSON.stringify(stroke));
+    clone.id = `clone-${Math.random().toString(16).slice(2)}`;
+    if (clone.type === "shape") {
+      clone.x += 20;
+      clone.y += 20;
+      if (clone.shape === "line") {
+        clone.x2 += 20;
+        clone.y2 += 20;
+      }
+      clone.bbox = getShapeBounds(clone);
+    } else if (clone.points) {
+      clone.points = clone.points.map((val, idx) =>
+        idx % 2 === 0 ? val + 20 : val + 20,
+      );
+      clone.bbox = computeBoundsFromPoints(clone.points);
+    }
+    slide.strokes.push(clone);
+    items.push({ stroke: clone, index: slide.strokes.length - 1 });
+    newIds.push(clone.id);
+  });
+  if (items.length) {
+    pushCommand(slide, { type: "add", items });
+    state.selectionIds = newIds;
+    updateSelectionBounds();
+    redrawAll();
+  }
+}
+
+function hitTestShape(stroke, point) {
+  if (stroke.shape === "line") {
+    const dx = stroke.x2 - stroke.x;
+    const dy = stroke.y2 - stroke.y;
+    const lengthSq = dx * dx + dy * dy;
+    if (!lengthSq) return false;
+    const t =
+      ((point.x - stroke.x) * dx + (point.y - stroke.y) * dy) / lengthSq;
+    const clamped = Math.max(0, Math.min(1, t));
+    const px = stroke.x + clamped * dx;
+    const py = stroke.y + clamped * dy;
+    const dist = Math.hypot(point.x - px, point.y - py);
+    return dist <= stroke.size * 2;
+  }
+  if (stroke.shape === SHAPE_TYPES.ELLIPSE) {
+    const cx = stroke.x + stroke.w / 2;
+    const cy = stroke.y + stroke.h / 2;
+    const rx = Math.abs(stroke.w / 2) || 1;
+    const ry = Math.abs(stroke.h / 2) || 1;
+    const nx = (point.x - cx) / rx;
+    const ny = (point.y - cy) / ry;
+    return nx * nx + ny * ny <= 1;
+  }
+  const rect = normalizeRect(
+    stroke.x,
+    stroke.y,
+    stroke.x + stroke.w,
+    stroke.y + stroke.h,
+  );
+  return pointInRect(point, rect);
+}
+
+function hitTestIcon(stroke, point) {
+  // Check if point is within icon bounds
+  const rect = {
+    x: stroke.x,
+    y: stroke.y,
+    right: stroke.x + stroke.width,
+    bottom: stroke.y + stroke.height,
+  };
+  return pointInRect(point, rect);
+}
+
+function hitTestStrokePath(stroke, point, radius) {
+  if (!stroke.points || stroke.points.length < 2) return false;
+  const r = radius + (stroke.size || 1) * 0.5;
+  const pts = stroke.points;
+  for (let i = 0; i < pts.length - 2; i += 2) {
+    const x1 = pts[i];
+    const y1 = pts[i + 1];
+    const x2 = pts[i + 2];
+    const y2 = pts[i + 3];
+    if (pointToSegmentDistance(point.x, point.y, x1, y1, x2, y2) <= r) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+  const t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+  const clamped = Math.max(0, Math.min(1, t));
+  const cx = x1 + clamped * dx;
+  const cy = y1 + clamped * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+function startElementErase(point) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  state.eraseIndexMap = new Map(
+    slide.strokes.map((stroke, index) => [stroke.id, index]),
+  );
+  state.erasedItems = [];
+  state.erasedIds = new Set();
+  eraseAtPoint(point);
+}
+
+function eraseAtPoint(point) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const radius = size.value || TOOL_DEFAULTS.eraser.size;
+  let removed = false;
+  for (let i = slide.strokes.length - 1; i >= 0; i -= 1) {
+    const stroke = slide.strokes[i];
+    if (!stroke || stroke.tool === "eraser") continue;
+    if (state.erasedIds?.has(stroke.id)) continue;
+    const bbox = getStrokeBounds(stroke);
+    const padding = radius + (stroke.size || 1);
+    if (
+      point.x < bbox.minX - padding ||
+      point.x > bbox.maxX + padding ||
+      point.y < bbox.minY - padding ||
+      point.y > bbox.maxY + padding
+    ) {
+      continue;
+    }
+    const hit =
+      stroke.type === STROKE_TYPES.SHAPE
+        ? hitTestShape(stroke, point)
+        : hitTestStrokePath(stroke, point, radius);
+    if (!hit) continue;
+    const index =
+      (state.eraseIndexMap?.get(stroke.id) ?? Number.isFinite(i)) ? i : 0;
+    state.erasedItems.push({ stroke, index });
+    state.erasedIds?.add(stroke.id);
+    slide.strokes.splice(i, 1);
+    removed = true;
+  }
+  if (removed) {
+    redrawAll();
+  }
+}
+
+function finalizeElementErase() {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  if (state.erasedItems && state.erasedItems.length) {
+    pushCommand(slide, { type: "remove", items: state.erasedItems });
+  }
+  state.eraseIndexMap = null;
+  state.erasedItems = [];
+  state.erasedIds = null;
+  redrawAll();
+}
+
+function handleFill(point) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  for (let i = slide.strokes.length - 1; i >= 0; i -= 1) {
+    const stroke = slide.strokes[i];
+    if (
+      stroke.type === STROKE_TYPES.SHAPE &&
+      hitTestShape(stroke, point) &&
+      stroke.shape !== SHAPE_TYPES.LINE
+    ) {
+      const before = stroke.fillColor || null;
+      const after = color.value;
+      stroke.fillColor = after;
+      pushCommand(slide, { type: "fill-shape", id: stroke.id, before, after });
+      redrawAll();
+      return;
+    }
+  }
+  const before = {
+    color: slide.backgroundColor || "#111111",
+    image: slide.backgroundImage,
+    size: slide.backgroundSize,
+    pattern: slide.backgroundPattern,
+    bitmap: slide.backgroundBitmap,
+  };
+  const after = {
+    color: color.value,
+    image: null,
+    size: null,
+    pattern: null,
+    bitmap: null,
+  };
+  slide.backgroundColor = after.color;
+  slide.backgroundImage = null;
+  slide.backgroundSize = null;
+  slide.backgroundPattern = null;
+  slide.backgroundBitmap = null;
+  pushCommand(slide, { type: "background", before, after });
+  redrawAll();
+}
+
+function commitShape(start, end) {
+  const slide = getActiveSlide();
+  if (!slide) return;
+  const rect = normalizeRect(start.x, start.y, end.x, end.y);
+  const base = TOOL_DEFAULTS.shape;
+
+  // Handle icon shapes with the new type: "icon" system
+  if (shapeType.value === "icon") {
+    const stroke = {
+      id: `icon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: "icon",
+      icon: activeIcon.value,
+      x: rect.x,
+      y: rect.y,
+      width: rect.w,
+      height: rect.h,
+      rotation: 0,
+      color: color.value,
+      alpha: base.alpha,
+      size: rect.w,
+    };
+    slide.strokes.push(stroke);
+    pushCommand(slide, {
+      type: "add",
+      items: [{ stroke, index: slide.strokes.length - 1 }],
+    });
+    redrawAll();
+    return;
+  }
+
+  const stroke = {
+    id: `shape-${strokeCounter.value++}`,
+    type: "shape",
+    tool: "shape",
+    shape: shapeType.value,
+    color: color.value,
+    size: size.value || base.size,
+    alpha: base.alpha,
+    fillColor: null,
+  };
+  if (shapeType.value === "line") {
+    stroke.x = start.x;
+    stroke.y = start.y;
+    stroke.x2 = end.x;
+    stroke.y2 = end.y;
+  } else {
+    stroke.x = rect.x;
+    stroke.y = rect.y;
+    stroke.w = rect.w;
+    stroke.h = rect.h;
+  }
+  stroke.bbox = getShapeBounds(stroke);
+  slide.strokes.push(stroke);
+  pushCommand(slide, {
+    type: "add",
+    items: [{ stroke, index: slide.strokes.length - 1 }],
+  });
+  redrawAll();
+}
+
+function getCanvasSize() {
+  if (!inkCanvas.value) return { width: 1, height: 1 };
+
+  return {
+    width: inkCanvas.value.width,
+    height: inkCanvas.value.height,
+  };
+}
+
+function triggerImport() {
+  if (!importInput.value) return;
+  importInput.value.value = "";
+  importInput.value.click();
+}
+
+function triggerPdfImport() {
+  if (!pdfInput.value) return;
+  pdfInput.value.value = "";
+  pdfInput.value.click();
+}
+
+function sanitizeSlide(raw, scaleX, scaleY) {
+  const strokes = Array.isArray(raw.strokes) ? raw.strokes : [];
+  return {
+    id: raw.id || `slide-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    strokes: strokes.map((stroke) => {
+      if (stroke.type === STROKE_TYPES.SHAPE) {
+        const s = {
+          id: stroke.id || `shape-${Math.random().toString(16).slice(2)}`,
+          type: STROKE_TYPES.SHAPE,
+          tool: "shape",
+          shape: stroke.shape || "rect",
+          color: stroke.color || "#ffffff",
+          size: typeof stroke.size === "number" ? stroke.size : 3,
+          alpha: typeof stroke.alpha === "number" ? stroke.alpha : 1,
+          fillColor: stroke.fillColor || null,
+        };
+        if (s.shape === "line") {
+          s.x = (stroke.x || 0) * scaleX;
+          s.y = (stroke.y || 0) * scaleY;
+          s.x2 = (stroke.x2 || 0) * scaleX;
+          s.y2 = (stroke.y2 || 0) * scaleY;
+        } else {
+          s.x = (stroke.x || 0) * scaleX;
+          s.y = (stroke.y || 0) * scaleY;
+          s.w = (stroke.w || 0) * scaleX;
+          s.h = (stroke.h || 0) * scaleY;
+        }
+        s.bbox = getShapeBounds(s);
+        return s;
+      }
+      const points = Array.isArray(stroke.points)
+        ? stroke.points.map((val, idx) =>
+            idx % 2 === 0 ? val * scaleX : val * scaleY,
+          )
+        : [];
+      return {
+        id: stroke.id || `stroke-${Math.random().toString(16).slice(2)}`,
+        type: "path",
+        tool: stroke.tool || "pen",
+        color: stroke.color || "#ffffff",
+        size: typeof stroke.size === "number" ? stroke.size : 3.5,
+        alpha: typeof stroke.alpha === "number" ? stroke.alpha : 1,
+        composite: stroke.composite || "source-over",
+        points,
+        bbox: points.length ? computeBoundsFromPoints(points) : null,
+      };
+    }),
+    thumb: "",
+    backgroundColor: raw.backgroundColor || "#111111",
+    backgroundImage: raw.backgroundImage || null,
+    backgroundSize: raw.backgroundSize || null,
+    backgroundBitmap: null,
+    history: [],
+    redoHistory: [],
+  };
+}
+
+function handleImport(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      if (!applyDeckPayload(payload)) return;
+      markDirty();
+    } catch (err) {
+      console.error("Failed to import drawing", err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function handlePdfImport(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    pdfImportStatus.value = {
+      active: true,
+      message: "Loading PDF...",
+      current: 0,
+      total: 0,
+      error: false,
+    };
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+    const data = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    const { width: canvasW, height: canvasH } = getCanvasSize();
+    const newSlides = [];
+    pdfImportStatus.value = {
+      ...pdfImportStatus.value,
+      total: pdf.numPages,
+      message: `Rendering 1 / ${pdf.numPages}`,
+    };
+    for (let i = 1; i <= pdf.numPages; i += 1) {
+      pdfImportStatus.value = {
+        ...pdfImportStatus.value,
+        current: i,
+        message: `Rendering ${i} / ${pdf.numPages}`,
+      };
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(
+        canvasW / viewport.width,
+        canvasH / viewport.height,
+      );
+      const renderViewport = page.getViewport({ scale: scale * 2 });
+      const canvas =
+        typeof OffscreenCanvas !== "undefined"
+          ? new OffscreenCanvas(renderViewport.width, renderViewport.height)
+          : document.createElement("canvas");
+      canvas.width = renderViewport.width;
+      canvas.height = renderViewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport: renderViewport })
+        .promise;
+      const slide = createSlide();
+      slide.backgroundPattern = null;
+      if (typeof createImageBitmap !== "undefined") {
+        slide.backgroundBitmap = await createImageBitmap(canvas);
+        if (canvas.convertToBlob) {
+          const blob = await canvas.convertToBlob();
+          slide.backgroundImage = await blobToDataURL(blob);
+        } else if (canvas.toDataURL) {
+          slide.backgroundImage = canvas.toDataURL("image/png");
+        }
+      } else if (canvas.convertToBlob) {
+        const blob = await canvas.convertToBlob();
+        slide.backgroundImage = await blobToDataURL(blob);
+      } else if (canvas.toDataURL) {
+        slide.backgroundImage = canvas.toDataURL("image/png");
+      }
+      slide.backgroundSize = {
+        width: renderViewport.width,
+        height: renderViewport.height,
+      };
+      newSlides.push(slide);
+    }
+    slides.value = newSlides;
+    currentSlideIndex.value = 0;
+    renderAllThumbnails();
+    redrawAll();
+    markDirty();
+    pdfImportStatus.value = {
+      ...pdfImportStatus.value,
+      message: "Import complete",
+    };
+    setTimeout(() => {
+      pdfImportStatus.value = {
+        active: false,
+        message: "",
+        current: 0,
+        total: 0,
+        error: false,
+      };
+    }, 700);
+  } catch (err) {
+    console.error("Failed to import PDF", err);
+    pdfImportStatus.value = {
+      active: true,
+      message: "PDF import failed",
+      current: 0,
+      total: 0,
+      error: true,
+    };
+    setTimeout(() => {
+      pdfImportStatus.value = {
+        active: false,
+        message: "",
+        current: 0,
+        total: 0,
+        error: false,
+      };
+    }, 1500);
+  }
+}
+
+function exportJson() {
+  const payload = serializeDeck();
+  const blob = new Blob([JSON.stringify(payload)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "teaching-board.json";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPng() {
+  const dataUrl = inkCanvas.value.toDataURL("image/png");
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = `slide-${currentSlideIndex.value + 1}.png`;
+  link.click();
+}
+
+async function exportPdf() {
+  const { width, height } = getCanvasSize();
+  const doc = new jsPDF({ unit: "px", format: [width, height] });
+  for (let i = 0; i < slides.value.length; i += 1) {
+    const slide = slides.value[i];
+    if (i > 0) doc.addPage([width, height]);
+    await ensureBackgroundReady(slide);
+    const canvas = renderSlideToCanvas(slide, 2);
+    const dataUrl = canvas.toDataURL("image/png");
+    doc.addImage(dataUrl, "PNG", 0, 0, width, height);
+  }
+  doc.save("teaching-board.pdf");
+}
+
+function renderSlideToCanvas(slide, scale) {
+  const { width, height } = getCanvasSize();
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+  drawBackground(ctx, slide, width, height);
+  for (const stroke of slide.strokes) {
+    renderStroke(ctx, stroke);
+  }
+  return canvas;
+}
+
+async function ensureBackgroundReady(slide) {
+  if (slide.backgroundBitmap) return;
+  if (!slide.backgroundImage) return;
+  const img = getBackgroundImage(slide.backgroundImage);
+  if (!img) return;
+  if (!img.complete || !img.naturalWidth) {
+    await new Promise((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    });
+  }
+  if (typeof createImageBitmap !== "undefined" && img.naturalWidth) {
+    try {
+      slide.backgroundBitmap = await createImageBitmap(img);
+    } catch (err) {
+      console.warn("Failed to create ImageBitmap", err);
+    }
+  }
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function handlePointerDown(e) {
+  const point = getPointFromEvent(e);
+  state.pendingPoints = [];
+
+  // Handle selection tools (pointer and select) using SelectorTool
+  if (SelectorTool.isSelectionTool(tool.value)) {
+    state.isDrawing = true;
+    inkCanvas.value.setPointerCapture(e.pointerId);
+
+    // Check if point is within existing selection
+    if (SelectorTool.canSelectAt(point, computedSelectionBounds.value)) {
+      const handle = SelectorTool.getHandleAt(point, getSelectionHandleAt);
+      if (handle) {
+        startTransform(TRANSFORM_MODES.SCALE, point, handle);
+        return;
+      }
+      startTransform(
+        e.altKey ? TRANSFORM_MODES.SCALE : TRANSFORM_MODES.MOVE,
+        point,
+      );
+      return;
+    }
+
+    clearSelection();
+
+    // Check if clicking directly on a stroke (single-click selection)
+    const slide = getActiveSlide();
+    if (slide) {
+      // Check strokes from top to bottom (reverse order - last drawn is on top)
+      for (let i = slide.strokes.length - 1; i >= 0; i--) {
+        const stroke = slide.strokes[i];
+        if (stroke.tool === "eraser") continue;
+
+        const hit =
+          stroke.type === STROKE_TYPES.SHAPE
+            ? hitTestShape(stroke, point)
+            : stroke.type === STROKE_TYPES.ICON
+              ? hitTestIcon(stroke, point)
+              : hitTestStrokePath(stroke, point, 8);
+
+        if (hit) {
+          // Found a stroke - select it and prepare to move
+          state.selectionIds = [stroke.id];
+          startTransform(TRANSFORM_MODES.MOVE, point);
+          requestOverlay();
+          return;
+        }
+      }
+    }
+
+    // No stroke hit - start drag selection
+    state.selectionRect = SelectorTool.beginSelection(
+      point,
+      SELECTION_MODES.SELECT,
+    );
+    requestOverlay();
+    return;
+  }
+
+  if (tool.value === "fill") {
+    handleFill(point);
+    return;
+  }
+
+  if (tool.value === "eraser" && eraserMode.value === "area") {
+    state.isDrawing = true;
+    inkCanvas.value.setPointerCapture(e.pointerId);
+    startElementErase(point);
+    return;
+  }
+
+  if (tool.value === "shape") {
+    state.isDrawing = true;
+    inkCanvas.value.setPointerCapture(e.pointerId);
+    state.shapePreview = { start: point, end: point };
+    requestOverlay();
+    return;
+  }
+
+  state.isDrawing = true;
+  inkCanvas.value.setPointerCapture(e.pointerId);
+  if (tool.value === "laser") {
+    addLaserPoint(point);
+    return;
+  }
+  currentStroke = startStroke(point);
+  state.pendingPoints.push(point.x, point.y);
+  scheduleFlush();
+}
+
+function handlePointerMove(e) {
+  const point = getPointFromEvent(e);
+  state.cursor.x = point.x;
+  state.cursor.y = point.y;
+  state.cursor.active = true;
+  requestOverlay();
+
+  if (!state.isDrawing) return;
+
+  if (tool.value === "pointer" || tool.value === "select") {
+    if (state.transform) {
+      const dx = point.x - state.transform.startX;
+      const dy = point.y - state.transform.startY;
+      if (state.transform.mode === TRANSFORM_MODES.SCALE) {
+        applyScaleTransform(dx, dy, point);
+      } else {
+        applyMoveTransform(dx, dy);
+      }
+      requestOverlay();
+      return;
+    }
+    if (state.selectionRect) {
+      state.selectionRect.x1 = point.x;
+      state.selectionRect.y1 = point.y;
+      requestOverlay();
+    }
+    return;
+  }
+
+  if (tool.value === "eraser" && eraserMode.value === "area") {
+    eraseAtPoint(point);
+    return;
+  }
+
+  if (tool.value === "shape") {
+    if (state.shapePreview) {
+      state.shapePreview.end = point;
+      requestOverlay();
+    }
+    return;
+  }
+
+  if (tool.value === "laser") {
+    addLaserPoint(point);
+    return;
+  }
+
+  state.pendingPoints.push(point.x, point.y);
+  scheduleFlush();
+}
+
+function handlePointerUp(e) {
+  if (!state.isDrawing) return;
+  state.isDrawing = false;
+  inkCanvas.value.releasePointerCapture(e.pointerId);
+
+  if (tool.value === "select") {
+    if (state.transform) {
+      finalizeTransform();
+    } else if (state.selectionRect) {
+      finalizeSelectionRect();
+    }
+    return;
+  }
+
+  if (tool.value === "eraser" && eraserMode.value === "area") {
+    finalizeElementErase();
+    return;
+  }
+
+  if (tool.value === "shape") {
+    if (state.shapePreview) {
+      commitShape(state.shapePreview.start, state.shapePreview.end);
+    }
+    state.shapePreview = null;
+    requestOverlay();
+    return;
+  }
+
+  if (tool.value === "laser") {
+    return;
+  }
+
+  flushStroke();
+  if (currentStroke) {
+    const slide = getActiveSlide();
+    if (slide) {
+      pushCommand(slide, {
+        type: "add",
+        items: [{ stroke: currentStroke, index: slide.strokes.length - 1 }],
+      });
+    }
+  }
+  currentStroke = null;
+  updateThumbnail();
+}
+
+function addLaserPoint(point) {
+  const now = performance.now();
+  state.laserTrail.push({ x: point.x, y: point.y, t: now });
+  requestOverlay();
+}
+
+function requestOverlay() {
+  if (state.overlayDirty) return;
+  state.overlayDirty = true;
+  requestAnimationFrame(renderOverlay);
+}
+
+function renderOverlay() {
+  state.overlayDirty = false;
+  const rect = overlayCanvas.value.getBoundingClientRect();
+  overlayCtx.value.clearRect(0, 0, rect.width, rect.height);
+
+  if (isRecording.value) {
+    overlayCtx.value.save();
+    overlayCtx.value.strokeStyle = "#ff3b30";
+    overlayCtx.value.lineWidth = 2;
+    overlayCtx.value.setLineDash([6, 4]);
+    overlayCtx.value.strokeRect(3, 3, rect.width - 6, rect.height - 6);
+    overlayCtx.value.restore();
+  }
+
+  if (state.cursor.active && tool.value !== "pointer") {
+    overlayCtx.value.save();
+    overlayCtx.value.globalAlpha = 0.8;
+    overlayCtx.value.strokeStyle =
+      tool.value === "eraser" ? "#ffffff" : color.value;
+    overlayCtx.value.lineWidth = 1.2;
+    overlayCtx.value.beginPath();
+    overlayCtx.value.arc(
+      state.cursor.x,
+      state.cursor.y,
+      size.value,
+      0,
+      Math.PI * 2,
+    );
+    overlayCtx.value.stroke();
+    overlayCtx.value.restore();
+  }
+
+  if (state.selectionRect) {
+    const rectSel = normalizeRect(
+      state.selectionRect.x0,
+      state.selectionRect.y0,
+      state.selectionRect.x1,
+      state.selectionRect.y1,
+    );
+    overlayCtx.value.save();
+    overlayCtx.value.strokeStyle =
+      state.selectionRect.mode === "erase" ? "#ff6b81" : "#6c8cff";
+    overlayCtx.value.lineWidth = 1;
+    overlayCtx.value.setLineDash([6, 4]);
+    overlayCtx.value.strokeRect(rectSel.x, rectSel.y, rectSel.w, rectSel.h);
+    overlayCtx.value.restore();
+  }
+
+  if (computedSelectionBounds.value) {
+    overlayCtx.value.save();
+    overlayCtx.value.strokeStyle = "#6c8cff";
+    overlayCtx.value.lineWidth = 1.2;
+    overlayCtx.value.setLineDash([4, 4]);
+    overlayCtx.value.strokeRect(
+      computedSelectionBounds.value.x,
+      computedSelectionBounds.value.y,
+      computedSelectionBounds.value.w,
+      computedSelectionBounds.value.h,
+    );
+    overlayCtx.value.restore();
+    drawSelectionHandles(overlayCtx.value, computedSelectionBounds.value);
+  }
+
+  if (state.shapePreview) {
+    const start = state.shapePreview.start;
+    const end = state.shapePreview.end;
+    let drewIcon = false;
+    overlayCtx.value.save();
+    overlayCtx.value.strokeStyle = color.value;
+    overlayCtx.value.lineWidth = size.value;
+    overlayCtx.value.setLineDash([5, 4]);
+    overlayCtx.value.beginPath();
+    if (shapeType.value === "line") {
+      overlayCtx.value.moveTo(start.x, start.y);
+      overlayCtx.value.lineTo(end.x, end.y);
+    } else if (shapeType.value === "ellipse") {
+      const rectShape = normalizeRect(start.x, start.y, end.x, end.y);
+      const cx = rectShape.x + rectShape.w / 2;
+      const cy = rectShape.y + rectShape.h / 2;
+      overlayCtx.value.ellipse(
+        cx,
+        cy,
+        Math.abs(rectShape.w / 2),
+        Math.abs(rectShape.h / 2),
+        0,
+        0,
+        Math.PI * 2,
+      );
+    } else if (shapeType.value === "icon") {
+      const rectShape = normalizeRect(start.x, start.y, end.x, end.y);
+      const tempIcon = {
+        icon: activeIcon.value,
+        x: rectShape.x,
+        y: rectShape.y,
+        width: rectShape.w,
+        height: rectShape.h,
+        rotation: 0,
+        color: color.value,
+        alpha: 1,
+      };
+      overlayCtx.value.restore();
+      drawBootstrapIcon(overlayCtx.value, tempIcon);
+      drewIcon = true;
+    } else {
+      const rectShape = normalizeRect(start.x, start.y, end.x, end.y);
+      overlayCtx.value.rect(rectShape.x, rectShape.y, rectShape.w, rectShape.h);
+    }
+    if (!drewIcon) {
+      overlayCtx.value.stroke();
+      overlayCtx.value.restore();
+    }
+  }
+
+  const now = performance.now();
+  const life = 600;
+  const trail = state.laserTrail;
+  let start = state.laserStart;
+  while (start < trail.length && now - trail[start].t > life) {
+    start += 1;
+  }
+  state.laserStart = start;
+
+  if (trail.length - start > 1) {
+    overlayCtx.value.save();
+    overlayCtx.value.lineCap = "round";
+    overlayCtx.value.lineJoin = "round";
+    overlayCtx.value.strokeStyle = color.value;
+    overlayCtx.value.lineWidth = size.value;
+    overlayCtx.value.globalCompositeOperation = "lighter";
+
+    overlayCtx.value.beginPath();
+    overlayCtx.value.moveTo(trail[start].x, trail[start].y);
+    for (let i = start + 1; i < trail.length; i += 1) {
+      const p = trail[i];
+      const age = (now - p.t) / life;
+      overlayCtx.value.globalAlpha = Math.max(0, 1 - age);
+      overlayCtx.value.lineTo(p.x, p.y);
+    }
+    overlayCtx.value.stroke();
+    overlayCtx.value.restore();
+  }
+
+  if (trail.length - start > 0) {
+    requestOverlay();
+  } else if (state.laserStart > 0) {
+    state.laserTrail = [];
+    state.laserStart = 0;
+  }
+}
+
+function handleKeydown(e) {
+  if (!isClassRoute.value) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    if (e.shiftKey) {
+      redo();
+    } else {
+      undo();
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+    e.preventDefault();
+    redo();
+  }
+  if (e.key.toLowerCase() === "v") setTool("select");
+  if (e.key.toLowerCase() === "p") setTool("pen");
+  if (e.key.toLowerCase() === "h") setTool("highlighter");
+  if (e.key.toLowerCase() === "l") setTool("laser");
+  if (e.key.toLowerCase() === "s") setTool("shape");
+  if (e.key.toLowerCase() === "f") setTool("fill");
+  if (e.key.toLowerCase() === "e") {
+    setTool("eraser");
+    eraserMode.value = eraserMode.value === "pixel" ? "area" : "pixel";
+  }
+  if (e.key.toLowerCase() === "c") cloneSelection();
+}
+
+function initTemplates() {
+  const base = [
+    { id: "chalk", label: "Chalk", color: "#111111", pattern: "none" },
+    { id: "midnight", label: "Midnight", color: "#0b0f1a", pattern: "none" },
+    { id: "white", label: "White", color: "#fefefe", pattern: "none" },
+    { id: "paper", label: "Paper", color: "#f7f1e3", pattern: "none" },
+    {
+      id: "grid-dark",
+      label: "Grid Dark",
+      color: "#111111",
+      pattern: "grid",
+      step: 40,
+    },
+    {
+      id: "grid-light",
+      label: "Grid Light",
+      color: "#ffffff",
+      pattern: "grid",
+      step: 40,
+    },
+    {
+      id: "graph-light",
+      label: "Graph Light",
+      color: "#ffffff",
+      pattern: "graph",
+      step: 20,
+    },
+    {
+      id: "graph-dark",
+      label: "Graph Dark",
+      color: "#0b0f1a",
+      pattern: "graph",
+      step: 20,
+    },
+    {
+      id: "dots-dark",
+      label: "Dots Dark",
+      color: "#111111",
+      pattern: "dots",
+      step: 36,
+    },
+    {
+      id: "dots-light",
+      label: "Dots Light",
+      color: "#ffffff",
+      pattern: "dots",
+      step: 36,
+    },
+    {
+      id: "ruled",
+      label: "Ruled",
+      color: "#fdfcf8",
+      pattern: "ruled",
+      step: 32,
+      margin: 96,
+    },
+    {
+      id: "ruled-dark",
+      label: "Ruled Dark",
+      color: "#101417",
+      pattern: "ruled",
+      step: 32,
+      margin: 96,
+    },
+    {
+      id: "cornell",
+      label: "Cornell",
+      color: "#fdfcf8",
+      pattern: "cornell",
+      step: 32,
+      margin: 96,
+      header: 80,
+    },
+    {
+      id: "isometric",
+      label: "Isometric",
+      color: "#ffffff",
+      pattern: "isometric",
+      step: 28,
+    },
+    { id: "hex", label: "Hex", color: "#ffffff", pattern: "hex", step: 20 },
+    {
+      id: "music",
+      label: "Music",
+      color: "#ffffff",
+      pattern: "music",
+      step: 10,
+      group: 26,
+    },
+    {
+      id: "timeline",
+      label: "Timeline",
+      color: "#ffffff",
+      pattern: "timeline",
+      step: 90,
+    },
+    {
+      id: "blueprint",
+      label: "Blueprint",
+      color: "#0b1f3a",
+      pattern: "grid",
+      step: 40,
+      line: "rgba(255,255,255,0.16)",
+      lineMajor: "rgba(255,255,255,0.32)",
+    },
+    {
+      id: "diagonal",
+      label: "Diagonal",
+      color: "#fdfcf8",
+      pattern: "diagonal",
+      step: 26,
+    },
+  ];
+  templates.value = base.map((tpl) => {
+    const preview = createTemplatePreview(tpl);
+    return { ...tpl, preview, ...createTemplateBackground(tpl) };
+  });
+  if (Object.keys(templateAssetModules).length) {
+    const assetTemplates = Object.entries(templateAssetModules)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([path, src], index) => {
+        const filename = path.split("/").pop() || `Template ${index + 1}`;
+        const label = filename.replace(/\.(png|jpe?g|webp)$/i, "");
+        return {
+          id: `asset-${index}`,
+          label: label || `Template ${index + 1}`,
+          image: src,
+          preview: src,
+          color: "#ffffff",
+          size: { width: 1920, height: 1080 },
+          uploaded: true,
+        };
+      });
+    templates.value = [...templates.value, ...assetTemplates];
+  }
+  const stored = loadStoredTemplates();
+  if (stored.length) {
+    templates.value = [...templates.value, ...stored];
+  }
+}
+
+function loadStoredTemplates() {
+  try {
+    const raw = localStorage.getItem("uploadedTemplates");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((tpl) => tpl && tpl.image && tpl.preview)
+      .map((tpl) => ({
+        ...tpl,
+        uploaded: true,
+      }));
+  } catch (err) {
+    console.warn("Failed to load templates", err);
+    return [];
+  }
+}
+
+function saveStoredTemplates() {
+  const uploaded = templates.value.filter((tpl) => tpl.uploaded);
+  const payload = uploaded.map((tpl) => ({
+    id: tpl.id,
+    label: tpl.label,
+    color: tpl.color,
+    image: tpl.image,
+    preview: tpl.preview,
+    size: tpl.size,
+    uploaded: true,
+  }));
+  try {
+    localStorage.setItem("uploadedTemplates", JSON.stringify(payload));
+  } catch (err) {
+    console.warn("Failed to save templates", err);
+  }
+}
+
+function createTemplatePreview(tpl) {
+  const cssWidth = 140;
+  const cssHeight = 90;
+  const scale = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(cssWidth * scale);
+  canvas.height = Math.round(cssHeight * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = tpl.color;
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+  drawTemplatePattern(ctx, tpl, cssWidth, cssHeight);
+  return canvas.toDataURL("image/png");
+}
+
+function createTemplateBackground(tpl) {
+  if (tpl.pattern === "none") {
+    return { color: tpl.color, image: null, size: null, bitmap: null };
+  }
+  if (tpl.pattern === "image" && tpl.image) {
+    return {
+      color: tpl.color || "#111111",
+      image: tpl.image,
+      size: tpl.size || null,
+      bitmap: null,
+    };
+  }
+  return {
+    color: tpl.color,
+    image: null,
+    size: null,
+    bitmap: null,
+  };
+}
+
+function drawTemplatePattern(ctx, tpl, width, height) {
+  const pattern = tpl.pattern;
+  const isDark = isDarkColor(tpl.color);
+  const line =
+    tpl.line || (isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)");
+  const lineMajor =
+    tpl.lineMajor || (isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.22)");
+  const dot =
+    tpl.dot || (isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.2)");
+  const step = tpl.step || 40;
+
+  if (pattern === "grid" || pattern === "graph") {
+    const majorEvery = 5;
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= width; x += step) {
+      ctx.strokeStyle = x % (step * majorEvery) === 0 ? lineMajor : line;
+      ctx.beginPath();
+      const px = snapLine(x);
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, height);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= height; y += step) {
+      ctx.strokeStyle = y % (step * majorEvery) === 0 ? lineMajor : line;
+      ctx.beginPath();
+      const py = snapLine(y);
+      ctx.moveTo(0, py);
+      ctx.lineTo(width, py);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (pattern === "dots") {
+    ctx.fillStyle = dot;
+    const radius = tpl.radius || 1.4;
+    for (let x = 0; x <= width; x += step) {
+      for (let y = 0; y <= height; y += step) {
+        ctx.beginPath();
+        ctx.arc(
+          Math.round(x) + 0.5,
+          Math.round(y) + 0.5,
+          radius,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
+    return;
+  }
+
+  if (pattern === "ruled" || pattern === "cornell") {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    const margin = tpl.margin || 96;
+    for (let y = step; y <= height; y += step) {
+      ctx.beginPath();
+      const py = snapLine(y);
+      ctx.moveTo(0, py);
+      ctx.lineTo(width, py);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = lineMajor;
+    ctx.beginPath();
+    const mx = snapLine(margin);
+    ctx.moveTo(mx, 0);
+    ctx.lineTo(mx, height);
+    ctx.stroke();
+    if (pattern === "cornell") {
+      const header = tpl.header || 80;
+      ctx.beginPath();
+      const hy = snapLine(header);
+      ctx.moveTo(0, hy);
+      ctx.lineTo(width, hy);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (pattern === "diagonal") {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    for (let x = -height; x <= width; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(snapLine(x), 0);
+      ctx.lineTo(snapLine(x + height), height);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (pattern === "timeline") {
+    ctx.strokeStyle = lineMajor;
+    ctx.lineWidth = 2;
+    const mid = height / 2;
+    ctx.beginPath();
+    const my = snapLine(mid);
+    ctx.moveTo(0, my);
+    ctx.lineTo(width, my);
+    ctx.stroke();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    const tick = 12;
+    for (let x = step; x <= width; x += step) {
+      ctx.beginPath();
+      const px = snapLine(x);
+      ctx.moveTo(px, my - tick);
+      ctx.lineTo(px, my + tick);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (pattern === "music") {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    const staffGap = tpl.step || 10;
+    const groupGap = tpl.group || 26;
+    let y = staffGap * 2;
+    while (y < height) {
+      for (let i = 0; i < 5; i += 1) {
+        const lineY = y + i * staffGap;
+        ctx.beginPath();
+        const py = snapLine(lineY);
+        ctx.moveTo(0, py);
+        ctx.lineTo(width, py);
+        ctx.stroke();
+      }
+      y += staffGap * 5 + groupGap;
+    }
+    return;
+  }
+
+  if (pattern === "isometric") {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    const angle = Math.PI / 3;
+    const dx = height / Math.tan(angle);
+    for (let y = 0; y <= height; y += step) {
+      ctx.beginPath();
+      const py = snapLine(y);
+      ctx.moveTo(0, py);
+      ctx.lineTo(width, py);
+      ctx.stroke();
+    }
+    for (let x = -height; x <= width; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(snapLine(x), 0);
+      ctx.lineTo(snapLine(x + dx), height);
+      ctx.stroke();
+    }
+    for (let x = 0; x <= width + height; x += step) {
+      ctx.beginPath();
+      ctx.moveTo(snapLine(x), 0);
+      ctx.lineTo(snapLine(x - dx), height);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (pattern === "hex") {
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1;
+    const r = tpl.step || 20;
+    const h = Math.sqrt(3) * r;
+    const dx = 1.5 * r;
+    const dy = h;
+    let row = 0;
+    for (let y = 0; y <= height + h; y += dy) {
+      const offset = row % 2 === 0 ? 0 : dx / 2;
+      for (let x = -r; x <= width + r; x += dx) {
+        drawHex(ctx, x + offset, y, r);
+      }
+      row += 1;
+    }
+  }
+}
+
+function snapLine(value) {
+  return Math.round(value) + 0.5;
+}
+
+function drawHex(ctx, cx, cy, r) {
+  const angle = Math.PI / 3;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i += 1) {
+    const x = cx + r * Math.cos(angle * i);
+    const y = cy + r * Math.sin(angle * i);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function isDarkColor(hex) {
+  if (!hex || hex[0] !== "#" || hex.length < 7) return false;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luma < 0.45;
+}
+
+onMounted(async () => {
+  slides.value = [createSlide()];
+  inkCtx.value = inkCanvas.value.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+  bgCtx.value = backgroundCanvas.value.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+  overlayCtx.value = overlayCanvas.value.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+  recordCanvas = document.createElement("canvas");
+  recordCtx = recordCanvas.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+  recordCompositeCanvas = document.createElement("canvas");
+  recordCompositeCanvas.width = RECORD_WIDTH;
+  recordCompositeCanvas.height = RECORD_HEIGHT;
+  recordCompositeCtx = recordCompositeCanvas.getContext("2d", {
+    alpha: true,
+    desynchronized: true,
+  });
+
+  resizeCanvases();
+  setTool("pen");
+  initTemplates();
+  updateDockMetrics();
+
+  const loaded = await loadDeckFromDb();
+  if (!loaded) {
+    redrawAll();
+    renderAllThumbnails();
+  }
+  await loadRecordings();
+  await loadDevices();
+
+  window.addEventListener("keydown", handleKeydown);
+  window.addEventListener("popstate", handlePopstate);
+  resizeObserver = new ResizeObserver(resizeCanvases);
+  resizeObserver.observe(boardStage.value);
+  saveInterval = setInterval(() => {
+    if (deckDirty) saveDeckToDb();
+  }, 5000);
+});
+
+watch(routePath, (path) => {
+  if (path === "/recordings") {
+    loadRecordings();
+  }
+  if (path === "/class") {
+    nextTick(() => {
+      resizeCanvases();
+      updateDockMetrics();
+    });
+  } else {
+    showSettingsPopover.value = false;
+    showRecordings.value = false;
+    showSlidesPanel.value = false;
+    showPrestart.value = false;
+  }
+});
+
+watch(
+  () => webcam.chromaEnabled,
+  (enabled) => {
+    if (enabled && webcam.enabled) {
+      startWebcamLoop();
+    } else if (!enabled) {
+      stopWebcamLoop();
+    }
+  },
+);
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
+  window.removeEventListener("popstate", handlePopstate);
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+  if (saveInterval) {
+    clearInterval(saveInterval);
+    saveInterval = null;
+  }
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  stopRecordingLoop();
+  stopWebcamLoop();
+  stopRecordingTimer();
+  stopMicMeter();
+  if (webcam.stream) {
+    webcam.stream.getTracks().forEach((track) => track.stop());
+  }
+  stopMicPreview();
+  if (deckDirty) {
+    saveDeckToDb();
+  }
+  recordingUrls.forEach((url) => URL.revokeObjectURL(url));
+  recordingUrls.clear();
+});
+</script>
