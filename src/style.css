@@ -945,6 +945,8 @@ body {
   border: 1px solid var(--border);
   padding: 10px;
   box-shadow: var(--shadow);
+  z-index: 30;
+  pointer-events: auto;
 }
 
 .popover.color-popover {
@@ -1020,7 +1022,7 @@ body {
 
 .selection-toolbar {
   position: absolute;
-  z-index: 12;
+  z-index: 60;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1029,6 +1031,48 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   box-shadow: var(--soft-shadow);
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+
+.selection-style {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #f3f5f8;
+}
+
+.selection-style .icon-btn.color-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+.selection-style .icon-btn.color-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.selection-style .color-dot {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.selection-style .icon-btn.color-btn input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .selection-count {
@@ -1179,9 +1223,34 @@ body {
 .shape-popover {
   width: 520px;
   max-width: 70vw;
-  left: calc(50% + 80px);
   max-height: 70vh;
   overflow: auto;
+  transform: none;
+  bottom: auto;
+}
+
+.popover-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+
+.popover-tabs .tab-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #5b6470;
+}
+
+.popover-tabs .tab-btn.active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
 }
 
 .template-popover {
@@ -1432,7 +1501,7 @@ body {
 
 .shape-layout {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .shape-panel {
@@ -1442,13 +1511,13 @@ body {
 
 .shape-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
 .shape-btn {
   border: 1px solid var(--border);
-  background: #f7f8fa;
+  background: #f9fafb;
   border-radius: 10px;
   padding: 8px 4px;
   cursor: pointer;

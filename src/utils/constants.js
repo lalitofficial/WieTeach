@@ -24,6 +24,7 @@ export const SHAPE_TYPES = {
 export const TRANSFORM_MODES = {
   MOVE: "move",
   SCALE: "scale",
+  ROTATE: "rotate",
 };
 
 /**

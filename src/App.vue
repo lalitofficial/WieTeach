@@ -685,6 +685,7 @@
               :class="{ active: tool === 'shape' }"
               title="Shape"
               @click="toggleShapePopover"
+              ref="shapeToolBtn"
             >
               <svg viewBox="0 0 24 24">
                 <rect x="4" y="4" width="8" height="8" rx="1" />
@@ -789,6 +790,38 @@
             <span class="selection-count"
               >{{ state.selectionIds.length }} selected</span
             >
+            <div v-if="selectionHasIcons" class="selection-style">
+              <button class="icon-btn color-btn" title="Fill color">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 19h16v2H4z" />
+                  <path d="M7 5l5-3 5 3v6a5 5 0 1 1-10 0V5z" />
+                </svg>
+                <span
+                  class="color-dot"
+                  :style="{ background: selectedIconFill }"
+                ></span>
+                <input
+                  type="color"
+                  :value="selectedIconFill"
+                  @input="handleIconFillChange($event.target.value)"
+                />
+              </button>
+              <button class="icon-btn color-btn" title="Stroke color">
+                <svg viewBox="0 0 24 24">
+                  <path d="M5 19h14" />
+                  <path d="M8 5h8l2 8H6l2-8z" />
+                </svg>
+                <span
+                  class="color-dot"
+                  :style="{ background: selectedIconStroke }"
+                ></span>
+                <input
+                  type="color"
+                  :value="selectedIconStroke"
+                  @input="handleIconStrokeChange($event.target.value)"
+                />
+              </button>
+            </div>
             <button class="icon-btn" title="Duplicate" @click="cloneSelection">
               <svg viewBox="0 0 24 24">
                 <path d="M8 8h12v12H8V8zM4 4h12v12H4V4z" />
@@ -978,6 +1011,7 @@
             class="popover shape-popover"
             :class="{ hidden: !showShapePopover }"
             :style="shapePopoverStyle"
+            ref="shapePopoverRef"
           >
             <div class="popover-header">
               <span>Shapes</span>
@@ -985,8 +1019,24 @@
                 &times;
               </button>
             </div>
+            <div class="popover-tabs">
+              <button
+                class="tab-btn"
+                :class="{ active: shapeTab === 'shapes' }"
+                @click="shapeTab = 'shapes'"
+              >
+                Shapes
+              </button>
+              <button
+                class="tab-btn"
+                :class="{ active: shapeTab === 'icons' }"
+                @click="shapeTab = 'icons'"
+              >
+                Icons
+              </button>
+            </div>
             <div class="shape-layout">
-              <div class="shape-panel">
+              <div v-if="shapeTab === 'shapes'" class="shape-panel">
                 <div class="shape-grid">
                   <button
                     class="shape-btn"
@@ -1018,22 +1068,11 @@
                       <ellipse cx="12" cy="12" rx="7" ry="5" />
                     </svg>
                   </button>
-                  <button
-                    class="shape-btn"
-                    :class="{ active: shapeType === 'icon' }"
-                    @click="setShape('icon')"
-                    title="Icon"
-                  >
-                    <svg viewBox="0 0 24 24">
-                      <path
-                        d="M12 3l2.6 5.4 6 1-4.4 4.1 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.4l6-1L12 3z"
-                      />
-                    </svg>
-                  </button>
                 </div>
               </div>
-              <div v-if="shapeType === 'icon'" class="icon-panel">
+              <div v-else class="icon-panel">
                 <IconPicker
+                  :icons="ICON_LIBRARY"
                   @select="handleIconSelect"
                   @close="showShapePopover = false"
                 />
@@ -1387,10 +1426,6 @@ function buildBootstrapIconLibrary(rawSvg) {
 }
 
 const ICON_LIBRARY = buildBootstrapIconLibrary(bootstrapIconsSprite);
-console.log("ICON_LIBRARY loaded:", ICON_LIBRARY.length, "icons");
-if (ICON_LIBRARY.length > 0) {
-  console.log("First icon:", ICON_LIBRARY[0]);
-}
 
 function getIconById(iconId) {
   return ICON_LIBRARY.find((icon) => icon.id === iconId) || ICON_LIBRARY[0];
@@ -1453,7 +1488,7 @@ const showSettingsPopover = ref(false);
 const showSlidesPanel = ref(false);
 const shapeType = ref("rect");
 const activeIcon = ref(ICON_LIBRARY[0]?.id || "star");
-const iconSearch = ref("");
+const shapeTab = ref("shapes");
 const eraserMode = ref("pixel");
 const pdfImportStatus = ref({
   active: false,
@@ -1465,20 +1500,15 @@ const pdfImportStatus = ref({
 const recordingSearch = ref("");
 const recordingView = ref("list");
 const templateTab = ref("default");
-const filteredIcons = computed(() => {
-  const query = iconSearch.value.trim().toLowerCase();
-  if (!query) return ICON_LIBRARY;
-  return ICON_LIBRARY.filter(
-    (icon) =>
-      icon.id.toLowerCase().includes(query) ||
-      icon.label.toLowerCase().includes(query),
-  );
-});
 
 const canvasStack = ref(null);
 const inkCanvas = ref(null);
 const backgroundCanvas = ref(null);
 const overlayCanvas = ref(null);
+const shapeToolBtn = ref(null);
+const shapePopoverRef = ref(null);
+const shapePopoverSize = ref({ width: 320, height: 240 });
+const viewportSize = ref({ width: window.innerWidth, height: window.innerHeight });
 const boardStage = ref(null);
 const bottomDock = ref(null);
 const leftDock = ref(null);
@@ -1609,20 +1639,44 @@ const filteredRecordings = computed(() => {
     return name.includes(query) || created.includes(query);
   });
 });
+const selectedIconStrokes = computed(() => {
+  const slide = getActiveSlide();
+  if (!slide || !state.selectionIds.length) return [];
+  return state.selectionIds
+    .map((id) => findStrokeById(slide, id))
+    .filter((stroke) => stroke && stroke.type === STROKE_TYPES.ICON);
+});
+const selectionHasIcons = computed(
+  () => selectedIconStrokes.value.length > 0,
+);
+const selectedIconFill = computed(() => {
+  const stroke = selectedIconStrokes.value[0];
+  return stroke?.fillColor || stroke?.color || "#111111";
+});
+const selectedIconStroke = computed(() => {
+  const stroke = selectedIconStrokes.value[0];
+  return stroke?.strokeColor || "#111111";
+});
 const selectionToolbarStyle = computed(() => {
   if (!computedSelectionBounds.value) return {};
   const { width, height } = getCanvasSize();
   const bounds = computedSelectionBounds.value;
+  const stackRect = canvasStack.value?.getBoundingClientRect();
+  if (!stackRect) return {};
 
-  // Position at top-right corner of selection, with small offset
-  let x = bounds.right + 8;
-  let y = bounds.y - 8;
+  // Inline with selection bounds (top-left) in viewport coords
+  let x = stackRect.left + bounds.x;
+  let y = stackRect.top + bounds.y - 44;
 
-  // Keep toolbar in view - if too far right, position on left
-  if (x + 180 > width) x = bounds.x - 180 - 8;
+  // Keep toolbar in view
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+  if (x + 220 > viewportW) x = viewportW - 220;
+  if (x < 8) x = 8;
 
-  // Keep toolbar in view - if too far up, position below
-  if (y < 8) y = bounds.bottom + 8;
+  // If too far up, place below
+  if (y < 8) y = stackRect.top + bounds.bottom + 8;
+  if (y + 44 > viewportH) y = viewportH - 44;
 
   return {
     position: "fixed",
@@ -1632,17 +1686,27 @@ const selectionToolbarStyle = computed(() => {
 });
 
 const shapePopoverStyle = computed(() => {
-  if (!computedSelectionBounds.value || !showShapePopover.value) return {};
-  const { width, height } = getCanvasSize();
-  let x = computedSelectionBounds.value.right + 12;
-  let y = computedSelectionBounds.value.y;
-  // Keep popover in view
-  if (x + 320 > width) x = computedSelectionBounds.value.x - 320 - 12;
-  if (y + 300 > height) y = Math.max(12, height - 300);
+  if (!showShapePopover.value || !shapeToolBtn.value) return {};
+  const trigger = shapeToolBtn.value.getBoundingClientRect();
+  const { width: popW, height: popH } = shapePopoverSize.value;
+  const margin = 8;
+  const viewportW = viewportSize.value.width;
+  const viewportH = viewportSize.value.height;
+  let left = trigger.left;
+  let top = trigger.bottom + margin;
+  if (left + popW > viewportW - margin) {
+    left = Math.max(margin, viewportW - popW - margin);
+  }
+  if (top + popH > viewportH - margin) {
+    top = trigger.top - popH - margin;
+  }
+  if (top < margin) {
+    top = Math.max(margin, viewportH - popH - margin);
+  }
   return {
     position: "fixed",
-    left: `${x}px`,
-    top: `${y}px`,
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
   };
 });
 
@@ -1915,6 +1979,17 @@ function applyCommand(slide, cmd, direction) {
       if (stroke) stroke.fillColor = doApply ? cmd.after : cmd.before;
       break;
     }
+    case "icon-style": {
+      cmd.items.forEach((item) => {
+        const stroke = findStrokeById(slide, item.id);
+        if (!stroke) return;
+        const next = doApply ? item.after : item.before;
+        stroke.fillColor = next.fillColor;
+        stroke.strokeColor = next.strokeColor;
+        stroke.color = next.fillColor || stroke.color;
+      });
+      break;
+    }
     default:
       break;
   }
@@ -1938,6 +2013,8 @@ function applyStrokeSnapshot(stroke, snapshot) {
     stroke.height = snapshot.height;
     stroke.rotation = snapshot.rotation;
     stroke.color = snapshot.color;
+    stroke.fillColor = snapshot.fillColor;
+    stroke.strokeColor = snapshot.strokeColor;
     stroke.alpha = snapshot.alpha;
     stroke.size = snapshot.size;
     stroke.bbox = snapshot.bbox;
@@ -1968,6 +2045,8 @@ function getStrokeSnapshot(stroke) {
       height: stroke.height,
       rotation: stroke.rotation,
       color: stroke.color,
+      fillColor: stroke.fillColor,
+      strokeColor: stroke.strokeColor,
       alpha: stroke.alpha,
       size: stroke.size,
       bbox: stroke.bbox ? { ...stroke.bbox } : null,
@@ -2015,6 +2094,8 @@ function rectsIntersect(a, b) {
 
 const SELECTION_HANDLE_SIZE = 8;
 const SELECTION_HANDLE_HIT = 12;
+const ROTATION_HANDLE_OFFSET = 22;
+const ROTATION_HANDLE_RADIUS = 6;
 
 function getSelectionHandles(bounds) {
   return [
@@ -2023,6 +2104,13 @@ function getSelectionHandles(bounds) {
     { id: "sw", x: bounds.x, y: bounds.y + bounds.h },
     { id: "se", x: bounds.x + bounds.w, y: bounds.y + bounds.h },
   ];
+}
+
+function getRotationHandle(bounds) {
+  return {
+    x: bounds.x + bounds.w / 2,
+    y: bounds.y - ROTATION_HANDLE_OFFSET,
+  };
 }
 
 function getHandleAnchor(bounds, handle) {
@@ -2037,6 +2125,13 @@ function getHandleAnchor(bounds, handle) {
     default:
       return { x: bounds.x, y: bounds.y };
   }
+}
+
+function getRotationHandleAt(point) {
+  if (!computedSelectionBounds.value || !selectionHasIcons.value) return null;
+  const handle = getRotationHandle(computedSelectionBounds.value);
+  const dist = Math.hypot(point.x - handle.x, point.y - handle.y);
+  return dist <= ROTATION_HANDLE_RADIUS + 6;
 }
 
 function getSelectionHandleAt(point) {
@@ -2067,6 +2162,24 @@ function drawSelectionHandles(ctx, bounds) {
     ctx.fill();
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function drawRotationHandle(ctx, bounds) {
+  const handle = getRotationHandle(bounds);
+  ctx.save();
+  ctx.strokeStyle = "#6c8cff";
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(bounds.x + bounds.w / 2, bounds.y);
+  ctx.lineTo(handle.x, handle.y);
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(handle.x, handle.y, ROTATION_HANDLE_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -3698,15 +3811,19 @@ function drawBootstrapIcon(ctx, iconStroke) {
   ctx.translate(iconStroke.x + offsetX, iconStroke.y + offsetY);
   ctx.scale(scale, scale);
 
-  ctx.strokeStyle = iconStroke.color || "#000000";
-  ctx.fillStyle = iconStroke.color || "#000000";
-  ctx.lineWidth = Math.max(0.5, 2 / scale);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  paths.forEach((path) => {
-    ctx.stroke(path);
-  });
+  const fillColor = iconStroke.fillColor ?? iconStroke.color ?? "#000000";
+  const strokeColor = iconStroke.strokeColor;
+  ctx.fillStyle = fillColor;
+  if (fillColor) {
+    paths.forEach((path) => ctx.fill(path));
+  }
+  if (strokeColor) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = Math.max(0.5, 2 / scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    paths.forEach((path) => ctx.stroke(path));
+  }
 
   ctx.restore();
 }
@@ -4279,8 +4396,17 @@ function toggleShapePopover() {
     showColorPopover.value = false;
     showPenPopover.value = false;
     showEraserPopover.value = false;
+    shapeTab.value = "shapes";
   }
   setTool("shape");
+}
+
+function updateShapePopoverSize() {
+  nextTick(() => {
+    const rect = shapePopoverRef.value?.getBoundingClientRect();
+    if (!rect) return;
+    shapePopoverSize.value = { width: rect.width, height: rect.height };
+  });
 }
 
 function setShape(nextShape) {
@@ -4300,7 +4426,8 @@ function setShapeIcon(iconId) {
 
 function handleIconSelect(iconName) {
   activeIcon.value = iconName;
-  addIconToCanvas(iconName);
+  shapeType.value = "icon";
+  setTool("shape");
   showShapePopover.value = false;
 }
 
@@ -4311,7 +4438,7 @@ function addIconToCanvas(iconName) {
 
   const iconShape = {
     id: `icon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    type: "icon",
+    type: STROKE_TYPES.ICON,
     icon: iconName,
     x: centerX,
     y: centerY,
@@ -4319,6 +4446,8 @@ function addIconToCanvas(iconName) {
     height: 40,
     rotation: 0,
     color: color.value,
+    fillColor: color.value,
+    strokeColor: null,
     alpha: 1,
     size: 40,
   };
@@ -4334,6 +4463,8 @@ function addIconToCanvas(iconName) {
 
 function clearSelection() {
   state.selectionIds = [];
+  state.selectionRect = null;
+  state.transform = null;
   // selectionBounds will automatically become null via computed property
   requestOverlay();
 }
@@ -4406,16 +4537,24 @@ function startTransform(mode, point, handle = null) {
     const stroke = findStrokeById(slide, id);
     if (stroke) base.set(id, getStrokeSnapshot(stroke));
   });
+  const bounds = computedSelectionBounds.value
+    ? { ...computedSelectionBounds.value }
+    : null;
   state.transform = {
     mode,
     startX: point.x,
     startY: point.y,
     base,
-    bounds: computedSelectionBounds.value
-      ? { ...computedSelectionBounds.value }
-      : null,
+    bounds,
     handle,
   };
+  if (mode === TRANSFORM_MODES.ROTATE && bounds) {
+    const cx = bounds.x + bounds.w / 2;
+    const cy = bounds.y + bounds.h / 2;
+    state.transform.centerX = cx;
+    state.transform.centerY = cy;
+    state.transform.startAngle = Math.atan2(point.y - cy, point.x - cx);
+  }
 }
 
 function applyMoveTransform(dx, dy) {
@@ -4482,6 +4621,7 @@ function applyScaleTransform(dx, dy, point) {
       stroke.y = originY + (snapshot.y - originY) * scaleY;
       stroke.width = Math.max(12, snapshot.width * uniformScale);
       stroke.height = Math.max(12, snapshot.height * uniformScale);
+      stroke.bbox = getStrokeBounds(stroke);
     } else if (stroke.type === STROKE_TYPES.SHAPE) {
       if (stroke.shape === SHAPE_TYPES.LINE) {
         stroke.x = originX + (snapshot.x - originX) * scaleX;
@@ -4508,6 +4648,25 @@ function applyScaleTransform(dx, dy, point) {
     }
   });
   updateSelectionBounds();
+  redrawAll();
+  requestOverlay();
+}
+
+function applyRotateTransform(point) {
+  const slide = getActiveSlide();
+  if (!slide || !state.transform || !state.transform.bounds) return;
+  const { centerX, centerY, startAngle } = state.transform;
+  if (centerX == null || centerY == null || startAngle == null) return;
+  const angle = Math.atan2(point.y - centerY, point.x - centerX);
+  const delta = ((angle - startAngle) * 180) / Math.PI;
+  state.selectionIds.forEach((id) => {
+    const stroke = findStrokeById(slide, id);
+    const snapshot = state.transform.base.get(id);
+    if (!stroke || !snapshot) return;
+    if (stroke.type === STROKE_TYPES.ICON) {
+      stroke.rotation = (snapshot.rotation || 0) + delta;
+    }
+  });
   redrawAll();
   requestOverlay();
 }
@@ -4563,6 +4722,40 @@ function cloneSelection() {
     updateSelectionBounds();
     redrawAll();
   }
+}
+
+function applyIconStyleToSelection(changes) {
+  const slide = getActiveSlide();
+  if (!slide || !selectionHasIcons.value) return;
+  const items = [];
+  selectedIconStrokes.value.forEach((stroke) => {
+    const before = {
+      fillColor: stroke.fillColor ?? stroke.color ?? "#111111",
+      strokeColor: stroke.strokeColor ?? null,
+    };
+    const after = {
+      fillColor: before.fillColor,
+      strokeColor: before.strokeColor,
+      ...changes,
+    };
+    stroke.fillColor = after.fillColor;
+    stroke.strokeColor = after.strokeColor;
+    stroke.color = after.fillColor || stroke.color;
+    items.push({ id: stroke.id, before, after });
+  });
+  if (items.length) {
+    pushCommand(slide, { type: "icon-style", items });
+    redrawAll();
+    requestOverlay();
+  }
+}
+
+function handleIconFillChange(value) {
+  applyIconStyleToSelection({ fillColor: value });
+}
+
+function handleIconStrokeChange(value) {
+  applyIconStyleToSelection({ strokeColor: value });
 }
 
 function hitTestShape(stroke, point) {
@@ -4668,7 +4861,9 @@ function eraseAtPoint(point) {
     const hit =
       stroke.type === STROKE_TYPES.SHAPE
         ? hitTestShape(stroke, point)
-        : hitTestStrokePath(stroke, point, radius);
+        : stroke.type === STROKE_TYPES.ICON
+          ? hitTestIcon(stroke, point)
+          : hitTestStrokePath(stroke, point, radius);
     if (!hit) continue;
     const index =
       (state.eraseIndexMap?.get(stroke.id) ?? Number.isFinite(i)) ? i : 0;
@@ -4741,11 +4936,10 @@ function commitShape(start, end) {
   const rect = normalizeRect(start.x, start.y, end.x, end.y);
   const base = TOOL_DEFAULTS.shape;
 
-  // Handle icon shapes with the new type: "icon" system
   if (shapeType.value === "icon") {
     const stroke = {
       id: `icon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      type: "icon",
+      type: STROKE_TYPES.ICON,
       icon: activeIcon.value,
       x: rect.x,
       y: rect.y,
@@ -4753,6 +4947,8 @@ function commitShape(start, end) {
       height: rect.h,
       rotation: 0,
       color: color.value,
+      fillColor: color.value,
+      strokeColor: null,
       alpha: base.alpha,
       size: rect.w,
     };
@@ -4761,6 +4957,8 @@ function commitShape(start, end) {
       type: "add",
       items: [{ stroke, index: slide.strokes.length - 1 }],
     });
+    state.selectionIds = [stroke.id];
+    updateSelectionBounds();
     redrawAll();
     return;
   }
@@ -5079,6 +5277,11 @@ function handlePointerDown(e) {
     state.isDrawing = true;
     inkCanvas.value.setPointerCapture(e.pointerId);
 
+    if (selectionHasIcons.value && getRotationHandleAt(point)) {
+      startTransform(TRANSFORM_MODES.ROTATE, point, "rotate");
+      return;
+    }
+
     // Check if point is within existing selection
     if (SelectorTool.canSelectAt(point, computedSelectionBounds.value)) {
       const handle = SelectorTool.getHandleAt(point, getSelectionHandleAt);
@@ -5113,6 +5316,7 @@ function handlePointerDown(e) {
         if (hit) {
           // Found a stroke - select it and prepare to move
           state.selectionIds = [stroke.id];
+          updateSelectionBounds();
           startTransform(TRANSFORM_MODES.MOVE, point);
           requestOverlay();
           return;
@@ -5175,6 +5379,8 @@ function handlePointerMove(e) {
       const dy = point.y - state.transform.startY;
       if (state.transform.mode === TRANSFORM_MODES.SCALE) {
         applyScaleTransform(dx, dy, point);
+      } else if (state.transform.mode === TRANSFORM_MODES.ROTATE) {
+        applyRotateTransform(point);
       } else {
         applyMoveTransform(dx, dy);
       }
@@ -5330,6 +5536,9 @@ function renderOverlay() {
     );
     overlayCtx.value.restore();
     drawSelectionHandles(overlayCtx.value, computedSelectionBounds.value);
+    if (selectionHasIcons.value) {
+      drawRotationHandle(overlayCtx.value, computedSelectionBounds.value);
+    }
   }
 
   if (state.shapePreview) {
@@ -5366,7 +5575,8 @@ function renderOverlay() {
         width: rectShape.w,
         height: rectShape.h,
         rotation: 0,
-        color: color.value,
+        fillColor: color.value,
+        strokeColor: null,
         alpha: 1,
       };
       overlayCtx.value.restore();
@@ -5905,6 +6115,7 @@ onMounted(async () => {
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);
+  window.addEventListener("resize", handleViewportResize);
   resizeObserver = new ResizeObserver(resizeCanvases);
   resizeObserver.observe(boardStage.value);
   saveInterval = setInterval(() => {
@@ -5940,9 +6151,23 @@ watch(
   },
 );
 
+watch(showShapePopover, (visible) => {
+  if (visible) updateShapePopoverSize();
+});
+
+watch(shapeTab, () => {
+  if (showShapePopover.value) updateShapePopoverSize();
+});
+
+function handleViewportResize() {
+  viewportSize.value = { width: window.innerWidth, height: window.innerHeight };
+  updateShapePopoverSize();
+}
+
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("popstate", handlePopstate);
+  window.removeEventListener("resize", handleViewportResize);
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
