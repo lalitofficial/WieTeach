@@ -3,7 +3,7 @@
     <div class="icon-search-row">
       <div class="icon-search-meta">
         <span>Showing {{ filteredIcons.length }}</span>
-        <span>Total {{ BOOTSTRAP_ICONS.length }}</span>
+        <span>Total {{ icons.length }}</span>
       </div>
       <input
         v-model="query"
@@ -14,30 +14,20 @@
       />
     </div>
 
-    <aside class="icon-preview-panel">
-      <div class="icon-preview">
-        <div class="icon-preview-box">
-          <i :class="`bi bi-${previewIcon}`"></i>
-        </div>
-        <div class="icon-preview-meta">
-          <div class="icon-preview-title">{{ previewIcon }}</div>
-          <div class="icon-preview-sub">Bootstrap Icons</div>
-        </div>
-      </div>
-    </aside>
-
     <section class="icon-picker-grid">
       <button
         v-for="icon in filteredIcons"
-        :key="icon"
-        @click="selectIcon(icon)"
+        :key="icon.id"
+        @click="selectIcon(icon.id)"
         @mouseenter="previewIcon = icon"
         class="icon-picker-btn"
-        :class="{ active: icon === previewIcon }"
-        :title="icon"
+        :class="{ active: icon.id === previewIcon?.id }"
+        :title="icon.label"
       >
-        <i :class="`bi bi-${icon}`"></i>
-        <span class="icon-label">{{ icon }}</span>
+        <svg viewBox="0 0 16 16">
+          <path v-for="d in icon.paths" :key="d" :d="d" />
+        </svg>
+        <span class="icon-label">{{ icon.label }}</span>
       </button>
 
       <div v-if="filteredIcons.length === 0" class="icon-picker-empty">
@@ -49,30 +39,36 @@
 
 <script setup>
 import { ref, computed, watch } from "vue";
-import { BOOTSTRAP_ICONS } from "@/data/bootstrapIcons";
+
+const props = defineProps({
+  icons: {
+    type: Array,
+    default: () => [],
+  },
+});
 
 const query = ref("");
-const previewIcon = ref(BOOTSTRAP_ICONS[0] || "star");
+const previewIcon = ref(props.icons[0] || null);
 
 const filteredIcons = computed(() => {
   const searchTerm = query.value.trim().toLowerCase();
+  const list = props.icons || [];
+  if (!searchTerm) return list.slice(0, 120);
 
-  if (!searchTerm) {
-    return BOOTSTRAP_ICONS.slice(0, 50);
-  }
+  const startsWith = list
+    .filter((icon) => icon.id.toLowerCase().startsWith(searchTerm))
+    .slice(0, 120);
 
-  // Ranked search: startsWith > includes
-  const startsWith = BOOTSTRAP_ICONS.filter((icon) =>
-    icon.startsWith(searchTerm),
-  ).slice(0, 50);
+  if (startsWith.length >= 20) return startsWith;
 
-  if (startsWith.length >= 5) {
-    return startsWith;
-  }
-
-  const includes = BOOTSTRAP_ICONS.filter(
-    (icon) => icon.includes(searchTerm) && !icon.startsWith(searchTerm),
-  ).slice(0, 50 - startsWith.length);
+  const includes = list
+    .filter(
+      (icon) =>
+        !icon.id.toLowerCase().startsWith(searchTerm) &&
+        (icon.id.toLowerCase().includes(searchTerm) ||
+          icon.label.toLowerCase().includes(searchTerm)),
+    )
+    .slice(0, 120 - startsWith.length);
 
   return [...startsWith, ...includes];
 });
@@ -84,29 +80,33 @@ function selectIcon(iconName) {
   query.value = "";
 }
 
-watch(filteredIcons, (list) => {
-  if (list.length && !list.includes(previewIcon.value)) {
-    previewIcon.value = list[0];
-  }
-});
+watch(
+  () => props.icons,
+  (list) => {
+    if (list?.length && !previewIcon.value) {
+      previewIcon.value = list[0];
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
 .icon-picker-popover {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    "search search"
-    "preview grid";
+    "search"
+    "grid";
   gap: 10px;
   background: #ffffff;
   border-radius: 16px;
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
   border: 1px solid #e5e7eb;
   padding: 10px;
-  width: min(720px, 86vw);
-  max-height: 680px;
+  width: 100%;
+  max-height: 64vh;
   overflow: hidden;
 }
 
@@ -135,52 +135,6 @@ watch(filteredIcons, (list) => {
   outline: none;
   border-color: #3b63ff;
   box-shadow: 0 0 0 2px rgba(59, 99, 255, 0.12);
-}
-
-.icon-preview {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-}
-
-.icon-preview-panel {
-  grid-area: preview;
-  display: flex;
-  align-items: flex-start;
-}
-
-.icon-preview-box {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #111827;
-  font-size: 18px;
-}
-
-.icon-preview-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.icon-preview-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.icon-preview-sub {
-  font-size: 10px;
-  color: #6b7280;
 }
 
 .icon-search-meta {
@@ -228,9 +182,10 @@ watch(filteredIcons, (list) => {
   color: #ffffff;
 }
 
-.icon-picker-btn i {
-  font-size: 18px;
-  color: currentColor;
+.icon-picker-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
   margin-bottom: 2px;
 }
 
