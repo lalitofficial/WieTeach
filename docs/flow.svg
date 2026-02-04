@@ -28,7 +28,7 @@
 
   <rect x="880" y="120" width="260" height="140" rx="16" fill="#f8fafc"/>
   <text x="910" y="165" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">
-    3. Record & Share
+    3. Record &amp; Share
   </text>
   <text x="910" y="195" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="14">
     Composite capture
