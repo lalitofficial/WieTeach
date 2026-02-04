@@ -167,10 +167,21 @@
                 {{ dev.label || `Mic ${idx + 1}` }}
               </option>
             </select>
-            <div class="recording-status" :class="{ active: isRecording }">
-              <span class="record-dot"></span>
-              <span>{{ recordingTimeLabel }}</span>
-            </div>
+          <div class="recording-status" :class="{ active: isRecording }">
+            <span class="record-dot"></span>
+            <span>{{ recordingTimeLabel }}</span>
+            <span v-if="recordingSaveStatus" class="recording-save-status">
+              {{ recordingSaveStatus }}
+            </span>
+            <button
+              class="mini-btn header-toggle"
+              :class="{ active: recordingSaveToDisk }"
+              title="Save to disk"
+              @click="recordingSaveToDisk = !recordingSaveToDisk"
+            >
+              Disk
+            </button>
+          </div>
             <div class="recording-ctrls">
               <!-- <button class="icon-btn" title="Start/Stop" @click="toggleRecordings">
                 <svg v-if="!isRecording" viewBox="0 0 24 24">
@@ -431,6 +442,17 @@
         </div>
       </div>
     </main>
+
+    <div v-if="toast.visible" class="toast" :class="toast.type">
+      <span>{{ toast.message }}</span>
+      <button
+        v-if="toast.actionLabel"
+        class="toast-action"
+        @click="handleToastAction"
+      >
+        {{ toast.actionLabel }}
+      </button>
+    </div>
 
     <main class="board-shell" v-show="isClassRoute">
       <div class="board-area">
@@ -1170,6 +1192,14 @@
                   <option :value="8">8</option>
                 </select>
               </label>
+              <div class="recording-folder-row">
+                <button class="mini-btn" @click="pickRecordingFolder">
+                  Choose folder
+                </button>
+                <span class="recording-folder-status">
+                  {{ recordingDirHandle ? "Folder set" : "No folder" }}
+                </span>
+              </div>
             </div>
             <div class="recording-actions">
               <button class="pill-btn" @click="toggleRecordings">
@@ -1534,6 +1564,16 @@ const showRecordings = ref(false);
 const isRecording = ref(false);
 const recordings = ref([]);
 const recordingSettings = ref({ fps: 60, videoMbps: 8 });
+const recordingSaveToDisk = ref(false);
+const recordingDirHandle = ref(null);
+let recordingFileHandle = null;
+let recordingFileStream = null;
+const recordingSaveStatus = ref("");
+const toast = reactive({
+  visible: false,
+  message: "",
+  type: "info",
+});
 const recordingUrls = new Map();
 const previewRecording = ref(null);
 const penPresetSizes = [2, 4, 6, 8, 12, 16];
@@ -1767,9 +1807,10 @@ let dbPromise = null;
 let deckDirty = false;
 
 const DB_NAME = "teaching-board";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_DECK = "decks";
 const STORE_RECORDINGS = "recordings";
+const STORE_SETTINGS = "settings";
 
 function normalizeRoute(path) {
   return validRoutes.has(path) ? path : "/";
@@ -1788,6 +1829,67 @@ function navigate(path) {
       resizeCanvases();
       updateDockMetrics();
     });
+  }
+}
+
+function showToast(message, type = "info", duration = 3000) {
+  toast.message = message;
+  toast.type = type;
+  toast.visible = true;
+  setTimeout(() => {
+    toast.visible = false;
+  }, duration);
+}
+
+async function loadRecordingDirHandle() {
+  if (!("showDirectoryPicker" in window)) return;
+  try {
+    const db = await getDb();
+    const handle = await db.get(STORE_SETTINGS, "recordingDirHandle");
+    if (handle) {
+      recordingDirHandle.value = handle;
+    }
+  } catch (err) {
+    console.warn("Failed to load recording folder handle", err);
+  }
+}
+
+async function saveRecordingDirHandle(handle) {
+  try {
+    const db = await getDb();
+    await db.put(STORE_SETTINGS, handle, "recordingDirHandle");
+  } catch (err) {
+    console.warn("Failed to save recording folder handle", err);
+  }
+}
+
+async function ensureRecordingDirHandle() {
+  if (!("showDirectoryPicker" in window)) return null;
+  let handle = recordingDirHandle.value;
+  if (handle) {
+    const perm = await handle.queryPermission({ mode: "readwrite" });
+    if (perm === "granted") return handle;
+    const req = await handle.requestPermission({ mode: "readwrite" });
+    if (req === "granted") return handle;
+  }
+  handle = await window.showDirectoryPicker();
+  recordingDirHandle.value = handle;
+  await saveRecordingDirHandle(handle);
+  return handle;
+}
+
+async function pickRecordingFolder() {
+  if (!("showDirectoryPicker" in window)) {
+    showToast("Folder picker not supported in this browser", "warn");
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    recordingDirHandle.value = handle;
+    await saveRecordingDirHandle(handle);
+    showToast("Recording folder set", "success");
+  } catch (err) {
+    showToast("Folder picker canceled", "warn");
   }
 }
 
@@ -2277,6 +2379,9 @@ async function getDb() {
         }
         if (!db.objectStoreNames.contains(STORE_RECORDINGS)) {
           db.createObjectStore(STORE_RECORDINGS, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
+          db.createObjectStore(STORE_SETTINGS);
         }
       },
     });
@@ -3454,6 +3559,14 @@ async function startRecording() {
   );
   try {
     resetRecordingTimer();
+    recordingFileHandle = null;
+    recordingFileStream = null;
+    recordingSaveStatus.value = "";
+    if (recordingSaveToDisk.value && !("showDirectoryPicker" in window)) {
+      console.warn("File System Access API not supported, using IndexedDB");
+      recordingSaveToDisk.value = false;
+      showToast("Save to disk not supported, using IndexedDB", "warn");
+    }
     const captureCanvas =
       recordCompositeCanvas || recordCanvas || inkCanvas.value;
     const canvasStream = captureCanvas.captureStream(fps);
@@ -3487,10 +3600,51 @@ async function startRecording() {
       audioBitsPerSecond: 128_000,
     });
     const chunks = [];
+    const pendingWrites = [];
+    if (recordingSaveToDisk.value && "showDirectoryPicker" in window) {
+      try {
+        const dirHandle = await ensureRecordingDirHandle();
+        if (!dirHandle) throw new Error("No folder selected");
+        const now = new Date();
+        const filename = `Recording-${now
+          .toISOString()
+          .replace(/[:.]/g, "-")}.webm`;
+        recordingFileHandle = await dirHandle.getFileHandle(filename, {
+          create: true,
+        });
+        recordingFileStream = await recordingFileHandle.createWritable();
+        recordingSaveStatus.value = "Saving to disk";
+      } catch (err) {
+        console.warn("Save to disk canceled or failed, falling back to IDB", err);
+        recordingSaveToDisk.value = false;
+        showToast("Save to disk canceled, using IndexedDB", "warn");
+      }
+    }
     recorder.ondataavailable = (evt) => {
-      if (evt.data && evt.data.size) chunks.push(evt.data);
+      if (!evt.data || !evt.data.size) return;
+      if (recordingFileStream) {
+        const writePromise = recordingFileStream.write(evt.data);
+        pendingWrites.push(writePromise);
+      } else {
+        chunks.push(evt.data);
+      }
     };
     recorder.onstop = async () => {
+      if (recordingFileStream) {
+        try {
+          await Promise.all(pendingWrites);
+          await recordingFileStream.close();
+          recordingSaveStatus.value = "Saved to disk";
+          showToast("Recording saved to disk", "success");
+        } catch (err) {
+          console.error("Failed to write recording to disk", err);
+          showToast("Failed to save recording to disk", "error");
+        } finally {
+          recordingFileStream = null;
+          recordingFileHandle = null;
+        }
+        return;
+      }
       const blob = new Blob(chunks, { type: mimeType || "video/webm" });
       const now = new Date();
       const record = {
@@ -3528,6 +3682,13 @@ function stopRecording() {
   state.recordingAudio = null;
   isRecording.value = false;
   recordingPaused.value = false;
+  if (!recordingSaveToDisk.value) {
+    recordingSaveStatus.value = "";
+  } else {
+    setTimeout(() => {
+      recordingSaveStatus.value = "";
+    }, 4000);
+  }
   requestOverlay();
   stopRecordingLoop();
   stopRecordingTimer();
@@ -6118,6 +6279,7 @@ onMounted(async () => {
   }
   await loadRecordings();
   await loadDevices();
+  await loadRecordingDirHandle();
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);

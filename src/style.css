@@ -1450,6 +1450,27 @@ body {
   gap: 8px;
 }
 
+.recording-controls label.toggle {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.recording-controls label.toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.recording-controls .mini-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.recording-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .recording-controls select {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1497,6 +1518,54 @@ body {
 .recording-empty {
   font-size: 12px;
   color: #6b7280;
+}
+
+.recording-save-status {
+  margin-left: 10px;
+  font-size: 11px;
+  color: #22c55e;
+}
+
+.mini-btn.header-toggle {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.mini-btn.header-toggle.active {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
+.recording-folder-status {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #111827;
+  color: #f9fafb;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+  z-index: 999;
+}
+
+.toast.success {
+  background: #16a34a;
+}
+
+.toast.error {
+  background: #dc2626;
+}
+
+.toast.warn {
+  background: #f59e0b;
 }
 
 .shape-layout {
@@ -1820,6 +1889,7 @@ body {
     bottom: 8px;
     transform: translateX(-50%) scale(0.9);
   }
+
 }
 
 .webcam-preview {
