@@ -17,6 +17,10 @@ function createFfmpegProcess(rtmpUrl) {
   const args = [
     "-loglevel",
     "warning",
+    "-probesize",
+    "10M",
+    "-analyzeduration",
+    "10M",
     "-fflags",
     "+genpts",
     "-f",
@@ -54,7 +58,9 @@ function createFfmpegProcess(rtmpUrl) {
     "-ac",
     "2",
     "-ar",
-    "44100",
+    "48000",
+    "-af",
+    "highpass=f=80,lowpass=f=16000,aresample=async=1",
     "-flvflags",
     "no_duration_filesize",
     "-f",
@@ -71,6 +77,7 @@ function createFfmpegProcess(rtmpUrl) {
 wss.on("connection", (ws) => {
   let ffmpeg = null;
   let rtmpUrl = null;
+  let bufferedChunks = [];
 
   ws.on("message", (data, isBinary) => {
     if (!isBinary) {
@@ -80,18 +87,27 @@ wss.on("connection", (ws) => {
           rtmpUrl = msg.rtmpUrl;
           console.log(`[relay] start stream -> ${rtmpUrl}`);
           ffmpeg = createFfmpegProcess(rtmpUrl);
+          ws.send(JSON.stringify({ type: "ready" }));
+          if (bufferedChunks.length) {
+            bufferedChunks.forEach((chunk) => ffmpeg.stdin.write(chunk));
+            bufferedChunks = [];
+          }
         }
         if (msg.type === "stop") {
           console.log("[relay] stop stream");
           if (ffmpeg) ffmpeg.stdin.end();
           ffmpeg = null;
+          bufferedChunks = [];
         }
       } catch (err) {
         console.warn("[relay] bad control message", err);
       }
       return;
     }
-    if (!ffmpeg) return;
+    if (!ffmpeg) {
+      bufferedChunks.push(data);
+      return;
+    }
     if (ffmpeg.stdin.writable) {
       ffmpeg.stdin.write(data);
     }
@@ -100,6 +116,7 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     if (ffmpeg) ffmpeg.stdin.end();
     ffmpeg = null;
+    bufferedChunks = [];
     console.log("[relay] client disconnected");
   });
 });
