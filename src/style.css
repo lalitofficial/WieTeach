@@ -1495,6 +1495,38 @@ body {
   font-size: 12px;
 }
 
+.live-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.live-row {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.live-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: #fff;
+  color: #111827;
+}
+
+.live-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+}
+
 .recording-actions {
   margin-bottom: 10px;
 }

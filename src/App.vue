@@ -1218,6 +1218,43 @@
                 {{ isRecording ? "Stop" : "Start" }}
               </button>
             </div>
+            <div class="live-controls">
+              <div class="live-row">
+                <label>Relay WS</label>
+                <input
+                  class="live-input"
+                  v-model="liveRelayUrl"
+                  placeholder="ws://localhost:6060"
+                />
+              </div>
+              <div class="live-row">
+                <label>RTMP URL</label>
+                <input
+                  class="live-input"
+                  v-model="liveRtmpUrl"
+                  placeholder="rtmp://a.rtmp.youtube.com/live2"
+                />
+              </div>
+              <div class="live-row">
+                <label>Stream Key</label>
+                <input
+                  class="live-input"
+                  type="password"
+                  v-model="liveStreamKey"
+                  placeholder="xxxx-xxxx-xxxx-xxxx"
+                />
+              </div>
+              <div class="live-status">
+                <span>Live: {{ liveStatus }}</span>
+                <button
+                  class="pill-btn"
+                  :class="{ danger: isLiveBroadcasting }"
+                  @click="toggleLiveBroadcast"
+                >
+                  {{ isLiveBroadcasting ? "Stop Live" : "Go Live" }}
+                </button>
+              </div>
+            </div>
             <div class="recording-list">
               <div v-if="recordings.length === 0" class="recording-empty">
                 No recordings yet
@@ -1618,6 +1655,20 @@ let lastRecordingFileHandle = null;
 let recordingWriteChain = null;
 let recordingWriteFailed = false;
 const recordingSaveStatus = ref("");
+const isLiveBroadcasting = ref(false);
+const liveStatus = ref("Idle");
+const liveRelayUrl = ref(
+  import.meta.env.VITE_LIVE_RELAY_URL || "ws://localhost:6060",
+);
+const liveRtmpUrl = ref(
+  import.meta.env.VITE_LIVE_RTMP_URL || "rtmp://a.rtmp.youtube.com/live2",
+);
+const liveStreamKey = ref("");
+let liveSocket = null;
+let liveRecorder = null;
+let liveStream = null;
+let liveStopTimer = null;
+let liveAudioStream = null;
 const toast = reactive({
   visible: false,
   message: "",
@@ -1896,6 +1947,42 @@ function showToast(message, type = "info", duration = 3000) {
   setTimeout(() => {
     toast.visible = false;
   }, duration);
+}
+
+function buildLiveRtmpUrl() {
+  const base = (liveRtmpUrl.value || "").trim();
+  const key = (liveStreamKey.value || "").trim();
+  if (!base) return "";
+  if (!key) return base;
+  return base.endsWith("/") ? `${base}${key}` : `${base}/${key}`;
+}
+
+function loadLiveSettings() {
+  try {
+    const raw = localStorage.getItem("liveBroadcastSettings");
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data?.relayUrl) liveRelayUrl.value = data.relayUrl;
+    if (data?.rtmpUrl) liveRtmpUrl.value = data.rtmpUrl;
+    if (data?.streamKey) liveStreamKey.value = data.streamKey;
+  } catch (err) {
+    console.warn("Failed to load live settings", err);
+  }
+}
+
+function saveLiveSettings() {
+  try {
+    localStorage.setItem(
+      "liveBroadcastSettings",
+      JSON.stringify({
+        relayUrl: liveRelayUrl.value,
+        rtmpUrl: liveRtmpUrl.value,
+        streamKey: liveStreamKey.value,
+      }),
+    );
+  } catch (err) {
+    console.warn("Failed to save live settings", err);
+  }
 }
 
 function showActionToast(message, actionLabel, action, type = "info") {
@@ -3589,7 +3676,10 @@ function stopWebcamLoop() {
 function startRecordingLoop() {
   if (recordingRaf) cancelAnimationFrame(recordingRaf);
   const step = () => {
-    if (!isRecording.value) return;
+    if (!isRecording.value && !isLiveBroadcasting.value) {
+      recordingRaf = null;
+      return;
+    }
     renderRecordingFrame();
     recordingRaf = requestAnimationFrame(step);
   };
@@ -3597,6 +3687,7 @@ function startRecordingLoop() {
 }
 
 function stopRecordingLoop() {
+  if (isLiveBroadcasting.value) return;
   if (recordingRaf) cancelAnimationFrame(recordingRaf);
   recordingRaf = null;
 }
@@ -3637,6 +3728,125 @@ async function toggleRecordings() {
     stopRecording();
   } else {
     await startRecording();
+  }
+}
+
+async function startLiveBroadcast() {
+  if (isLiveBroadcasting.value) return;
+  const rtmpUrl = buildLiveRtmpUrl();
+  if (!rtmpUrl) {
+    showToast("RTMP URL or stream key missing", "error");
+    return;
+  }
+  if (!liveRelayUrl.value) {
+    showToast("Relay URL missing", "error");
+    return;
+  }
+  saveLiveSettings();
+  liveStatus.value = "Connecting";
+  isLiveBroadcasting.value = true;
+
+  try {
+    if (liveSocket) {
+      liveSocket.close();
+      liveSocket = null;
+    }
+    liveSocket = new WebSocket(liveRelayUrl.value);
+    liveSocket.binaryType = "arraybuffer";
+    liveSocket.onopen = () => {
+      liveSocket?.send(JSON.stringify({ type: "start", rtmpUrl }));
+      liveStatus.value = "Live";
+    };
+    liveSocket.onerror = () => {
+      liveStatus.value = "Error";
+      showToast("Live relay connection failed", "error");
+    };
+    liveSocket.onclose = () => {
+      if (isLiveBroadcasting.value) {
+        liveStatus.value = "Disconnected";
+      }
+    };
+
+    const fps = recordingSettings.value.fps || 30;
+    const captureCanvas =
+      recordCompositeCanvas || recordCanvas || inkCanvas.value;
+    const canvasStream = captureCanvas.captureStream(fps);
+    const audioConstraints = precheck.micId
+      ? { deviceId: { exact: precheck.micId } }
+      : true;
+    liveAudioStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+    });
+    liveStream = new MediaStream();
+    canvasStream
+      .getVideoTracks()
+      .forEach((track) => liveStream.addTrack(track));
+    if (liveAudioStream) {
+      liveAudioStream
+        .getAudioTracks()
+        .forEach((track) => liveStream.addTrack(track));
+    }
+    startRecordingLoop();
+    const mimeType = pickMimeType();
+    liveRecorder = new MediaRecorder(liveStream, {
+      mimeType: mimeType || undefined,
+      videoBitsPerSecond: Math.round(
+        (recordingSettings.value.videoMbps || 3) * 1_000_000,
+      ),
+      audioBitsPerSecond: 160_000,
+    });
+    liveRecorder.ondataavailable = async (evt) => {
+      if (!evt.data || !evt.data.size) return;
+      if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+      const buffer = await evt.data.arrayBuffer();
+      liveSocket.send(buffer);
+    };
+    liveRecorder.onstop = () => {
+      liveStatus.value = "Idle";
+    };
+    liveRecorder.start(1000);
+  } catch (err) {
+    console.error("Failed to start live broadcast", err);
+    showToast("Failed to start live broadcast", "error");
+    stopLiveBroadcast();
+  }
+}
+
+function stopLiveBroadcast() {
+  if (!isLiveBroadcasting.value) return;
+  isLiveBroadcasting.value = false;
+  liveStatus.value = "Stopping";
+  if (liveRecorder && liveRecorder.state !== "inactive") {
+    liveRecorder.stop();
+  }
+  liveRecorder = null;
+  if (liveStream) {
+    liveStream.getTracks().forEach((track) => track.stop());
+  }
+  liveStream = null;
+  if (liveAudioStream) {
+    liveAudioStream.getTracks().forEach((track) => track.stop());
+  }
+  liveAudioStream = null;
+  if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+    liveSocket.send(JSON.stringify({ type: "stop" }));
+  }
+  if (liveSocket) {
+    liveSocket.close();
+  }
+  liveSocket = null;
+  stopRecordingLoop();
+  if (liveStopTimer) clearTimeout(liveStopTimer);
+  liveStopTimer = setTimeout(() => {
+    if (!isLiveBroadcasting.value) liveStatus.value = "Idle";
+  }, 400);
+}
+
+function toggleLiveBroadcast() {
+  if (isLiveBroadcasting.value) {
+    stopLiveBroadcast();
+  } else {
+    startLiveBroadcast();
   }
 }
 
@@ -6507,6 +6717,7 @@ onMounted(async () => {
   await loadRecordings();
   await loadDevices();
   await loadRecordingDirHandle();
+  loadLiveSettings();
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);
@@ -6554,6 +6765,10 @@ watch(shapeTab, () => {
   if (showShapePopover.value) updateShapePopoverSize();
 });
 
+watch([liveRelayUrl, liveRtmpUrl, liveStreamKey], () => {
+  saveLiveSettings();
+});
+
 function handleViewportResize() {
   viewportSize.value = { width: window.innerWidth, height: window.innerHeight };
   updateShapePopoverSize();
@@ -6579,6 +6794,9 @@ onBeforeUnmount(() => {
   stopWebcamLoop();
   stopRecordingTimer();
   stopMicMeter();
+  if (isLiveBroadcasting.value) {
+    stopLiveBroadcast();
+  }
   if (webcam.stream) {
     webcam.stream.getTracks().forEach((track) => track.stop());
   }
