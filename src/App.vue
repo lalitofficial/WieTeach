@@ -3861,6 +3861,7 @@ async function startLiveBroadcast() {
   isLiveBroadcasting.value = true;
 
   try {
+    await ensureAvPermissions();
     if (liveSocket) {
       liveSocket.close();
       liveSocket = null;
@@ -3885,20 +3886,43 @@ async function startLiveBroadcast() {
     const captureCanvas =
       recordCompositeCanvas || recordCanvas || inkCanvas.value;
     const canvasStream = captureCanvas.captureStream(fps);
-    const audioConstraints = precheck.micId
-      ? { deviceId: { exact: precheck.micId } }
-      : true;
-    liveAudioStream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
-    });
+    liveOwnsAudio = false;
+    if (avControls.micEnabled) {
+      if (state.recordingAudio && isAudioActive(state.recordingAudio)) {
+        liveAudioStream = state.recordingAudio;
+      } else {
+        if (!micPreviewStream) {
+          await startMicPreview();
+        }
+        liveAudioStream = micPreviewStream;
+      }
+      if (!liveAudioStream?.getAudioTracks()?.length) {
+        showToast("No audio track from mic", "warn");
+      }
+      setMicEnabled(true, liveAudioStream);
+      setMicPaused(false);
+    }
     liveStream = new MediaStream();
     canvasStream
       .getVideoTracks()
       .forEach((track) => liveStream.addTrack(track));
     if (liveAudioStream) {
-      liveAudioStream
-        .getAudioTracks()
-        .forEach((track) => liveStream.addTrack(track));
+      const mixedTrack = await mixLiveAudioTrack(liveAudioStream);
+      if (mixedTrack) {
+        mixedTrack.enabled = true;
+        liveStream.addTrack(mixedTrack);
+      } else {
+        liveAudioStream.getAudioTracks().forEach((track) => {
+          track.enabled = true;
+          liveStream.addTrack(track);
+        });
+      }
+    } else {
+      const silentTrack = createSilentAudioTrack();
+      if (silentTrack) liveStream.addTrack(silentTrack);
+    }
+    if (!liveStream.getAudioTracks().length) {
+      showToast("Live stream has no audio track", "error");
     }
     startRecordingLoop();
     const mimeType = pickMimeType();
@@ -3907,7 +3931,7 @@ async function startLiveBroadcast() {
       videoBitsPerSecond: Math.round(
         (recordingSettings.value.videoMbps || 3) * 1_000_000,
       ),
-      audioBitsPerSecond: 160_000,
+      audioBitsPerSecond: 192_000,
     });
     liveRecorder.ondataavailable = async (evt) => {
       if (!evt.data || !evt.data.size) return;
@@ -3918,7 +3942,7 @@ async function startLiveBroadcast() {
     liveRecorder.onstop = () => {
       liveStatus.value = "Idle";
     };
-    liveRecorder.start(1000);
+    liveRecorder.start(250);
   } catch (err) {
     console.error("Failed to start live broadcast", err);
     showToast("Failed to start live broadcast", "error");
@@ -3938,10 +3962,19 @@ function stopLiveBroadcast() {
     liveStream.getTracks().forEach((track) => track.stop());
   }
   liveStream = null;
-  if (liveAudioStream) {
+  if (liveAudioStream && liveOwnsAudio) {
     liveAudioStream.getTracks().forEach((track) => track.stop());
   }
   liveAudioStream = null;
+  liveOwnsAudio = false;
+  if (liveSilentContext) {
+    liveSilentContext.close();
+  }
+  liveSilentContext = null;
+  if (liveAudioContext) {
+    liveAudioContext.close();
+  }
+  liveAudioContext = null;
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ type: "stop" }));
   }
@@ -3961,6 +3994,41 @@ function toggleLiveBroadcast() {
     stopLiveBroadcast();
   } else {
     startLiveBroadcast();
+  }
+}
+
+async function refreshLiveAudioTrack() {
+  if (!isLiveBroadcasting.value || !liveStream) return;
+  if (!avControls.micEnabled) {
+    liveStream.getAudioTracks().forEach((track) => liveStream.removeTrack(track));
+    const silentTrack = createSilentAudioTrack();
+    if (silentTrack) liveStream.addTrack(silentTrack);
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: micConstraints.value,
+    });
+    const mixedTrack = await mixLiveAudioTrack(stream);
+    liveStream.getAudioTracks().forEach((track) => liveStream.removeTrack(track));
+    if (mixedTrack) {
+      mixedTrack.enabled = true;
+      liveStream.addTrack(mixedTrack);
+    } else {
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = true;
+        liveStream.addTrack(track);
+      });
+    }
+    if (liveAudioStream && liveOwnsAudio) {
+      liveAudioStream.getTracks().forEach((track) => track.stop());
+    }
+    liveAudioStream = stream;
+    liveOwnsAudio = true;
+    setMicPaused(false);
+  } catch (err) {
+    console.warn("Failed to refresh live audio", err);
+    showToast("Failed to switch live audio device", "error");
   }
 }
 
@@ -3987,12 +4055,9 @@ async function startRecording() {
     const canvasStream = captureCanvas.captureStream(fps);
     let audioStream = null;
     try {
-      const audioConstraints = precheck.micId
-        ? { deviceId: { exact: precheck.micId } }
-        : true;
-      audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-      });
+    audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: micConstraints.value,
+    });
       setMicEnabled(avControls.micEnabled, audioStream);
       loadDevices();
       startMicMeter(audioStream);
@@ -6349,6 +6414,15 @@ function renderOverlay() {
 
 function handleKeydown(e) {
   if (!isClassRoute.value) return;
+  const target = e.target;
+  if (
+    target &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable)
+  ) {
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
     if (e.shiftKey) {
@@ -6361,6 +6435,7 @@ function handleKeydown(e) {
     e.preventDefault();
     redo();
   }
+  if (!e.altKey) return;
   if (e.key.toLowerCase() === "v") setTool("select");
   if (e.key.toLowerCase() === "p") setTool("pen");
   if (e.key.toLowerCase() === "h") setTool("highlighter");
@@ -6854,7 +6929,6 @@ watch(routePath, (path) => {
     });
   } else {
     showSettingsPopover.value = false;
-    showRecordings.value = false;
     showSlidesPanel.value = false;
     showPrestart.value = false;
   }
