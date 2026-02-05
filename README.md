@@ -1,26 +1,27 @@
 # WieTeach
 
-A modern, high‑performance teaching board for instructors. Draw, annotate, import PDFs, manage slides, and record classes with webcam compositing.
+![WieTeach Banner](./docs/banner.svg)
 
-## Latest High‑Quality Recording Build
-The best recording quality and performance work is on branch `recording/local-high`.
-- Higher quality PDF rendering and recording pipeline
-- Save‑to‑disk improvements and recording UX updates
+Modern teaching board + recording studio for instructors. Built for fast inking, crisp PDFs, and production‑ready class recordings.
 
-If you want the best recording output, use that branch.
+![Session Flow](./docs/flow.svg)
 
-## Why WieTeach
-- **Low‑latency ink**: Smooth strokes with optimized rendering paths.
-- **Class‑ready layout**: Teaching board + slides + quick tools.
-- **Recording pipeline**: Composite board + webcam in real time.
-- **Templates & assets**: Background patterns and custom templates.
+## Highlights
+- **Low‑latency ink**: Optimized canvas pipeline for smooth strokes.
+- **Slides + templates**: Manage decks, import PDFs, and apply templates.
+- **Recording composite**: Board + webcam (chroma) into a 16:9 capture.
+- **Persistence**: IndexedDB recordings + optional save‑to‑disk.
+- **Exports**: JSON, PNG, and PDF.
 
-## Features
-- Pen, highlighter, laser, shapes, and fill tools
-- Slide management with thumbnails
-- PDF import and template background support
-- Webcam overlay with chroma key and recording
-- Recordings library and preview
+## Architecture
+![Architecture Diagram](./docs/architecture.svg)
+
+## Tech Stack
+- Vue 3 + Vite
+- Canvas stack (background/ink/overlay)
+- MediaRecorder (WebM) + mic merge
+- PDF.js for PDF rendering
+- IndexedDB via `idb`
 
 ## Quick Start
 ```bash
@@ -28,17 +29,23 @@ npm install
 npm run dev
 ```
 
+## Production Build
+```bash
+npm run build
+npm run preview
+```
+
 ## Usage
 1. Open **Class**.
-2. Choose tools from the bottom dock.
-3. Import PDF or templates from settings.
-4. Start Class to record a session.
+2. Select tools from the dock.
+3. Import a PDF or template from settings.
+4. Start class to record.
 
 ## Contributing
-We welcome improvements! Please:
+Professional PRs welcome.
 - Fork the repo
 - Create a feature branch
-- Submit a PR with a clear summary and screenshots
+- Submit a PR with clear summary + screenshots
 
 ## License
 MIT

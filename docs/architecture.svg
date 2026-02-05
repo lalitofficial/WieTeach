@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <rect width="1200" height="720" fill="#0f172a"/>
+  <text x="60" y="70" fill="#e2e8f0" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700">
+    WieTeach Architecture
+  </text>
+
+  <rect x="60" y="110" width="500" height="240" rx="18" fill="#f8fafc"/>
+  <text x="90" y="150" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">
+    UI and Interaction
+  </text>
+  <text x="90" y="190" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Vue 3 and Vite, tool docks, popovers, slides
+  </text>
+  <text x="90" y="220" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Pointer, pen, shapes, icons, templates
+  </text>
+  <text x="90" y="250" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Live preview and overlay controls
+  </text>
+
+  <rect x="640" y="110" width="500" height="240" rx="18" fill="#f8fafc"/>
+  <text x="670" y="150" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">
+    Render and Media
+  </text>
+  <text x="670" y="190" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Canvas stack: background, ink, overlay
+  </text>
+  <text x="670" y="220" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    PDF import (pdfjs), templates
+  </text>
+  <text x="670" y="250" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Webcam chroma and recording composite
+  </text>
+
+  <rect x="60" y="400" width="500" height="240" rx="18" fill="#f8fafc"/>
+  <text x="90" y="440" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">
+    Persistence
+  </text>
+  <text x="90" y="480" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    IndexedDB for slides and recordings
+  </text>
+  <text x="90" y="510" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Optional save to disk
+  </text>
+  <text x="90" y="540" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Export JSON, PNG, and PDF
+  </text>
+
+  <rect x="640" y="400" width="500" height="240" rx="18" fill="#f8fafc"/>
+  <text x="670" y="440" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700">
+    Recording Pipeline
+  </text>
+  <text x="670" y="480" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Composite canvas at 1920 by 1080
+  </text>
+  <text x="670" y="510" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    MediaRecorder (WebM) plus mic merge
+  </text>
+  <text x="670" y="540" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="16">
+    Live preview mirrors recording output
+  </text>
+
+  <line x1="560" y1="230" x2="640" y2="230" stroke="#38bdf8" stroke-width="4"/>
+  <line x1="560" y1="520" x2="640" y2="520" stroke="#38bdf8" stroke-width="4"/>
+</svg>
