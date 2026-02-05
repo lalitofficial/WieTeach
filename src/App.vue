@@ -1849,6 +1849,9 @@ const showPrestart = ref(false);
 const RECORD_MAX_WIDTH = 2560;
 const RECORD_MAX_HEIGHT = 1440;
 const recordSize = reactive({ width: 1920, height: 1080 });
+const LIVE_RECORD_WIDTH = 1920;
+const LIVE_RECORD_HEIGHT = 1080;
+const liveRecordPrevSize = { width: 0, height: 0 };
 let recordCompositeCanvas = null;
 let recordCompositeCtx = null;
 
@@ -2121,6 +2124,25 @@ function stopLiveBitrateMeter() {
   liveAudioBitrateKbps.value = 0;
   liveAudioBytesSent = 0;
   liveAudioMeterStatus.value = "inactive";
+}
+
+function setLiveRecordSize(enabled) {
+  if (!recordCompositeCanvas) return;
+  if (enabled) {
+    liveRecordPrevSize.width = recordCompositeCanvas.width;
+    liveRecordPrevSize.height = recordCompositeCanvas.height;
+    recordCompositeCanvas.width = LIVE_RECORD_WIDTH;
+    recordCompositeCanvas.height = LIVE_RECORD_HEIGHT;
+    recordSize.width = recordCompositeCanvas.width;
+    recordSize.height = recordCompositeCanvas.height;
+  } else {
+    if (liveRecordPrevSize.width && liveRecordPrevSize.height) {
+      recordCompositeCanvas.width = liveRecordPrevSize.width;
+      recordCompositeCanvas.height = liveRecordPrevSize.height;
+      recordSize.width = recordCompositeCanvas.width;
+      recordSize.height = recordCompositeCanvas.height;
+    }
+  }
 }
 
 function createSilentAudioTrack() {
@@ -3921,6 +3943,7 @@ async function startLiveBroadcast() {
   isLiveBroadcasting.value = true;
 
   try {
+    setLiveRecordSize(true);
     await ensureAvPermissions();
     if (liveSocket) {
       liveSocket.close();
@@ -3928,22 +3951,29 @@ async function startLiveBroadcast() {
     }
     liveSocket = new WebSocket(liveRelayUrl.value);
     liveSocket.binaryType = "arraybuffer";
-    liveSocket.onopen = () => {
-      liveSocket?.send(JSON.stringify({ type: "start", rtmpUrl }));
-      liveStatus.value = "Live";
-      startLiveBitrateMeter();
-    };
-    liveSocket.onerror = () => {
-      liveStatus.value = "Error";
-      showToast("Live relay connection failed", "error");
-      stopLiveBitrateMeter();
-    };
+    const socketReady = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Live relay connection timeout"));
+      }, 5000);
+      liveSocket.onopen = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      liveSocket.onerror = () => {
+        clearTimeout(timeout);
+        liveStatus.value = "Error";
+        showToast("Live relay connection failed", "error");
+        stopLiveBitrateMeter();
+        reject(new Error("Live relay connection failed"));
+      };
+    });
     liveSocket.onclose = () => {
       if (isLiveBroadcasting.value) {
         liveStatus.value = "Disconnected";
       }
       stopLiveBitrateMeter();
     };
+    await socketReady;
 
     const fps = recordingSettings.value.fps || 30;
     const captureCanvas =
@@ -3989,7 +4019,10 @@ async function startLiveBroadcast() {
     }
     if (liveStream.getAudioTracks().length) {
       const audioOnlyStream = new MediaStream(liveStream.getAudioTracks());
-      const audioMimeType = pickAudioMimeType();
+      const audioMimeType =
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : pickAudioMimeType();
       if (!audioMimeType) {
         liveAudioMeterStatus.value = "unsupported";
         showToast("Audio meter unsupported in this browser", "warn");
@@ -4012,7 +4045,10 @@ async function startLiveBroadcast() {
       liveAudioMeterStatus.value = "no-audio";
     }
     startRecordingLoop();
-    const mimeType = pickMimeType();
+    const mimeType =
+      MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+        ? "video/webm;codecs=vp8,opus"
+        : pickMimeType();
     liveRecorder = new MediaRecorder(liveStream, {
       mimeType: mimeType || undefined,
       videoBitsPerSecond: Math.round(
@@ -4030,6 +4066,26 @@ async function startLiveBroadcast() {
     liveRecorder.onstop = () => {
       liveStatus.value = "Idle";
     };
+    const relayReady = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Relay did not acknowledge start"));
+      }, 5000);
+      liveSocket.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === "ready") {
+            clearTimeout(timeout);
+            resolve();
+          }
+        } catch {
+          // ignore non-JSON
+        }
+      };
+      liveSocket?.send(JSON.stringify({ type: "start", rtmpUrl, mimeType }));
+    });
+    await relayReady;
+    liveStatus.value = "Live";
+    startLiveBitrateMeter();
     liveRecorder.start(250);
   } catch (err) {
     console.error("Failed to start live broadcast", err);
@@ -4076,6 +4132,7 @@ function stopLiveBroadcast() {
     liveSocket.close();
   }
   liveSocket = null;
+  setLiveRecordSize(false);
   stopRecordingLoop();
   if (liveStopTimer) clearTimeout(liveStopTimer);
   liveStopTimer = setTimeout(() => {
