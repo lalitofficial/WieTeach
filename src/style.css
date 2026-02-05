@@ -217,6 +217,14 @@ body {
   box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.15);
 }
 
+.header-toggle svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+}
+
 .recording-ctrls {
   display: inline-flex;
   gap: 6px;
@@ -757,6 +765,25 @@ body {
   pointer-events: none;
 }
 
+.live-border {
+  position: absolute;
+  inset: 0;
+  /* border-radius: 12px; */
+  border: 2px dashed rgba(239, 68, 68, 0.9);
+  pointer-events: none;
+  /* animation: livePulse 1.2s ease-in-out infinite; */
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .bottom-toolbar {
   position: absolute;
   bottom: 18px;
@@ -807,6 +834,27 @@ body {
   transform: none;
   gap: 8px;
   padding: 8px 10px;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.live-pill .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
 }
 
 .quick-tool-panel {
@@ -1362,36 +1410,108 @@ body {
   border-radius: 6px;
 }
 
-.recording-popover {
-  width: 260px;
-  left: calc(50% + 220px);
-  max-height: 360px;
-  overflow: hidden;
-}
-
 .settings-popover {
-  width: 220px;
+  width: 280px;
   transform: translateY(-50%);
 }
 
-.settings-grid {
+.settings-body {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 14px;
+  margin-top: 10px;
 }
 
-.setting-btn {
-  border: 1px solid var(--border);
-  background: #ffffff;
+.settings-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.settings-tab {
+  border: none;
+  background: transparent;
   padding: 8px 10px;
   border-radius: 10px;
-  text-align: left;
+  font-size: 12px;
   font-weight: 600;
+  color: #6b7280;
   cursor: pointer;
 }
 
-.setting-btn:hover {
-  background: #f2f4f8;
+.settings-tab.active {
+  background: #111827;
+  color: #fff;
+}
+
+.settings-pane {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #6b7280;
+}
+
+.settings-card {
+  border: 1px solid #e3e7ef;
+  background: linear-gradient(135deg, #ffffff 0%, #f6f8ff 100%);
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.settings-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.settings-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #111827;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.settings-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+}
+
+.settings-text {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.settings-text strong {
+  font-size: 13px;
+  color: #111827;
 }
 
 .status-overlay {
@@ -1951,7 +2071,6 @@ body {
     bottom: 8px;
     transform: translateX(-50%) scale(0.9);
   }
-
 }
 
 .webcam-preview {

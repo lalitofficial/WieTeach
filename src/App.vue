@@ -177,9 +177,14 @@
                 class="mini-btn header-toggle"
                 :class="{ active: recordingSaveToDisk }"
                 title="Save to disk"
+                aria-label="Save to disk"
                 @click="recordingSaveToDisk = !recordingSaveToDisk"
               >
-                Disk
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z" />
+                  <path d="M7 4v6h10V6" />
+                  <rect x="7" y="14" width="10" height="6" rx="1" />
+                </svg>
               </button>
             </div>
             <div class="recording-ctrls">
@@ -551,6 +556,7 @@
               class="slide-transition"
               :class="slideTransition.phase"
             ></div>
+            <div v-if="isLiveBroadcasting" class="live-border"></div>
           </div>
 
           <div
@@ -776,6 +782,10 @@
                 <path d="M6 7h12l-1 14H7L6 7zm4-3h4l1 2H9l1-2z" />
               </svg>
             </button>
+            <div v-if="isLiveBroadcasting" class="live-pill">
+              <span class="live-dot"></span>
+              LIVE
+            </div>
           </div>
 
           <div v-if="pdfImportStatus.active" class="status-overlay">
@@ -1177,112 +1187,6 @@
           </div>
 
           <div
-            class="popover recording-popover"
-            :class="{ hidden: !showRecordings }"
-          >
-            <div class="popover-header">
-              <span>Recording</span>
-              <button class="close-btn" @click="showRecordings = false">
-                &times;
-              </button>
-            </div>
-            <div class="recording-controls">
-              <label>
-                FPS
-                <select v-model.number="recordingSettings.fps">
-                  <option :value="15">15</option>
-                  <option :value="30">30</option>
-                  <option :value="60">60</option>
-                </select>
-              </label>
-              <label>
-                Video Mbps
-                <select v-model.number="recordingSettings.videoMbps">
-                  <option :value="1.5">1.5</option>
-                  <option :value="3">3</option>
-                  <option :value="5">5</option>
-                  <option :value="8">8</option>
-                </select>
-              </label>
-              <div class="recording-folder-row">
-                <button class="mini-btn" @click="pickRecordingFolder">
-                  Choose folder
-                </button>
-                <span class="recording-folder-status">
-                  {{ recordingDirHandle ? "Folder set" : "No folder" }}
-                </span>
-              </div>
-            </div>
-            <div class="recording-actions">
-              <button class="pill-btn" @click="toggleRecordings">
-                {{ isRecording ? "Stop" : "Start" }}
-              </button>
-            </div>
-            <div class="live-controls">
-              <div class="live-row">
-                <label>Relay WS</label>
-                <input
-                  class="live-input"
-                  v-model="liveRelayUrl"
-                  placeholder="ws://localhost:6060"
-                />
-              </div>
-              <div class="live-row">
-                <label>RTMP URL</label>
-                <input
-                  class="live-input"
-                  v-model="liveRtmpUrl"
-                  placeholder="rtmp://a.rtmp.youtube.com/live2"
-                />
-              </div>
-              <div class="live-row">
-                <label>Stream Key</label>
-                <input
-                  class="live-input"
-                  type="password"
-                  v-model="liveStreamKey"
-                  placeholder="xxxx-xxxx-xxxx-xxxx"
-                />
-              </div>
-              <div class="live-status">
-                <span>Live: {{ liveStatus }}</span>
-                <button
-                  class="pill-btn"
-                  :class="{ danger: isLiveBroadcasting }"
-                  @click="toggleLiveBroadcast"
-                >
-                  {{ isLiveBroadcasting ? "Stop Live" : "Go Live" }}
-                </button>
-              </div>
-            </div>
-            <div class="recording-list">
-              <div v-if="recordings.length === 0" class="recording-empty">
-                No recordings yet
-              </div>
-              <div
-                v-for="rec in recordings"
-                :key="rec.id"
-                class="recording-item"
-              >
-                <div>
-                  <div class="recording-name">{{ rec.name }}</div>
-                  <div class="recording-meta">
-                    {{ formatBytes(rec.size) }} • {{ rec.createdAt }}
-                  </div>
-                </div>
-                <div class="recording-buttons">
-                  <button class="mini-btn" @click="downloadRecording(rec)">
-                    ↓
-                  </button>
-                  <button class="mini-btn" @click="deleteRecording(rec.id)">
-                    ✕
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
             class="popover settings-popover left-dock-popover"
             :class="{ hidden: !showSettingsPopover }"
           >
@@ -1292,18 +1196,174 @@
                 &times;
               </button>
             </div>
-            <div class="settings-grid">
-              <button class="setting-btn" @click="triggerImport">
-                Import JSON
-              </button>
-              <button class="setting-btn" @click="triggerPdfImport">
-                Import PDF
-              </button>
-              <button class="setting-btn" @click="exportJson">
-                Export JSON
-              </button>
-              <button class="setting-btn" @click="exportPng">Export PNG</button>
-              <button class="setting-btn" @click="exportPdf">Export PDF</button>
+            <div class="settings-body">
+              <div class="settings-tabs">
+                <button
+                  class="settings-tab"
+                  :class="{ active: settingsTab === 'io' }"
+                  @click="settingsTab = 'io'"
+                >
+                  Import / Export
+                </button>
+                <button
+                  class="settings-tab"
+                  :class="{ active: settingsTab === 'recording' }"
+                  @click="settingsTab = 'recording'"
+                >
+                  Recording
+                </button>
+              </div>
+              <div v-if="settingsTab === 'io'" class="settings-pane">
+                <div class="settings-section">
+                  <div class="settings-section-title">Import</div>
+                  <button class="settings-card" @click="triggerImport">
+                    <span class="settings-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 4v10" />
+                        <path d="M7 9l5 5 5-5" />
+                        <path d="M5 20h14" />
+                      </svg>
+                    </span>
+                    <span class="settings-text">
+                      <strong>Import JSON</strong>
+                      <span>Open a saved deck</span>
+                    </span>
+                  </button>
+                  <button class="settings-card" @click="triggerPdfImport">
+                    <span class="settings-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 4h8l4 4v12a2 2 0 0 1-2 2H6" />
+                        <path d="M14 4v4h4" />
+                        <path d="M8 14h8M8 17h5" />
+                      </svg>
+                    </span>
+                    <span class="settings-text">
+                      <strong>Import PDF</strong>
+                      <span>Convert pages to slides</span>
+                    </span>
+                  </button>
+                </div>
+                <div class="settings-section">
+                  <div class="settings-section-title">Export</div>
+                  <button class="settings-card" @click="exportJson">
+                    <span class="settings-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 20V10" />
+                        <path d="M7 15l5-5 5 5" />
+                        <path d="M5 4h14" />
+                      </svg>
+                    </span>
+                    <span class="settings-text">
+                      <strong>Export JSON</strong>
+                      <span>Share editable slides</span>
+                    </span>
+                  </button>
+                  <button class="settings-card" @click="exportPng">
+                    <span class="settings-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="4" y="5" width="16" height="14" rx="2" />
+                        <path d="M8 15l3-3 3 3 2-2 2 2" />
+                      </svg>
+                    </span>
+                    <span class="settings-text">
+                      <strong>Export PNG</strong>
+                      <span>Snapshot this slide</span>
+                    </span>
+                  </button>
+                  <button class="settings-card" @click="exportPdf">
+                    <span class="settings-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 4h8l4 4v12a2 2 0 0 1-2 2H6" />
+                        <path d="M14 4v4h4" />
+                        <path d="M8 14h8M8 17h6" />
+                      </svg>
+                    </span>
+                    <span class="settings-text">
+                      <strong>Export PDF</strong>
+                      <span>Full deck as PDF</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+              <div v-else class="settings-pane">
+                <div class="settings-section">
+                  <div class="settings-section-title">Recording</div>
+                  <div class="recording-controls">
+                    <label>
+                      FPS
+                      <select v-model.number="recordingSettings.fps">
+                        <option :value="15">15</option>
+                        <option :value="30">30</option>
+                        <option :value="60">60</option>
+                      </select>
+                    </label>
+                    <label>
+                      Video Mbps
+                      <select v-model.number="recordingSettings.videoMbps">
+                        <option :value="1.5">1.5</option>
+                        <option :value="3">3</option>
+                        <option :value="5">5</option>
+                        <option :value="8">8</option>
+                        <option :value="10">10</option>
+                        <option :value="12">12</option>
+                      </select>
+                    </label>
+                    <div class="recording-folder-row">
+                      <button class="mini-btn" @click="pickRecordingFolder">
+                        Choose folder
+                      </button>
+                      <span class="recording-folder-status">
+                        {{ recordingDirHandle ? "Folder set" : "No folder" }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="recording-actions">
+                    <button class="pill-btn" @click="toggleRecordings">
+                      {{ isRecording ? "Stop" : "Start" }}
+                    </button>
+                  </div>
+                </div>
+                <div class="settings-section">
+                  <div class="settings-section-title">Live</div>
+                  <div class="live-controls">
+                    <div class="live-row">
+                      <label>Relay WS</label>
+                      <input
+                        class="live-input"
+                        v-model="liveRelayUrl"
+                        placeholder="ws://localhost:6060"
+                      />
+                    </div>
+                    <div class="live-row">
+                      <label>RTMP URL</label>
+                      <input
+                        class="live-input"
+                        v-model="liveRtmpUrl"
+                        placeholder="rtmp://a.rtmp.youtube.com/live2"
+                      />
+                    </div>
+                    <div class="live-row">
+                      <label>Stream Key</label>
+                      <input
+                        class="live-input"
+                        type="password"
+                        v-model="liveStreamKey"
+                        placeholder="xxxx-xxxx-xxxx-xxxx"
+                      />
+                    </div>
+                    <div class="live-status">
+                      <span>Live: {{ liveStatus }}</span>
+                      <button
+                        class="pill-btn"
+                        :class="{ danger: isLiveBroadcasting }"
+                        @click="toggleLiveBroadcast"
+                      >
+                        {{ isLiveBroadcasting ? "Stop Live" : "Go Live" }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div v-if="showPrestart" class="prestart-backdrop">
@@ -1643,10 +1703,10 @@ const draggedSlideIndex = ref(null);
 
 const templates = ref([]);
 const currentTemplate = ref(null);
-const showRecordings = ref(false);
+const settingsTab = ref("io");
 const isRecording = ref(false);
 const recordings = ref([]);
-const recordingSettings = ref({ fps: 60, videoMbps: 8 });
+const recordingSettings = ref({ fps: 60, videoMbps: 12 });
 const recordingSaveToDisk = ref(false);
 const recordingDirHandle = ref(null);
 let recordingFileHandle = null;
@@ -1669,6 +1729,9 @@ let liveRecorder = null;
 let liveStream = null;
 let liveStopTimer = null;
 let liveAudioStream = null;
+let liveSilentContext = null;
+let liveOwnsAudio = false;
+let liveAudioContext = null;
 const toast = reactive({
   visible: false,
   message: "",
@@ -1695,6 +1758,12 @@ const precheck = reactive({
   cameraId: "",
   micId: "",
 });
+const micConstraints = computed(() => ({
+  deviceId: precheck.micId ? { exact: precheck.micId } : undefined,
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+}));
 const avControls = reactive({
   cameraEnabled: false,
   cameraMuted: false,
@@ -1954,6 +2023,7 @@ function buildLiveRtmpUrl() {
   const key = (liveStreamKey.value || "").trim();
   if (!base) return "";
   if (!key) return base;
+  if (base.includes(key)) return base;
   return base.endsWith("/") ? `${base}${key}` : `${base}/${key}`;
 }
 
@@ -1996,6 +2066,35 @@ function showActionToast(message, actionLabel, action, type = "info") {
 function handleToastAction() {
   if (toast.action) toast.action();
   toast.visible = false;
+}
+
+function createSilentAudioTrack() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  liveSilentContext = new AudioCtx();
+  const oscillator = liveSilentContext.createOscillator();
+  const gain = liveSilentContext.createGain();
+  gain.gain.value = 0;
+  oscillator.connect(gain);
+  const dest = liveSilentContext.createMediaStreamDestination();
+  gain.connect(dest);
+  oscillator.start();
+  return dest.stream.getAudioTracks()[0] || null;
+}
+
+async function mixLiveAudioTrack(stream) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx || !stream) return stream?.getAudioTracks?.()[0] || null;
+  if (!liveAudioContext) {
+    liveAudioContext = new AudioCtx();
+  }
+  if (liveAudioContext.state === "suspended") {
+    await liveAudioContext.resume();
+  }
+  const source = liveAudioContext.createMediaStreamSource(stream);
+  const dest = liveAudioContext.createMediaStreamDestination();
+  source.connect(dest);
+  return dest.stream.getAudioTracks()[0] || null;
 }
 
 async function openLastRecording() {
@@ -2893,6 +2992,9 @@ async function handleMicDeviceChange() {
     stopMicPreview();
     await startMicPreview();
   }
+  if (isLiveBroadcasting.value) {
+    await refreshLiveAudioTrack();
+  }
 }
 
 async function toggleWebcam() {
@@ -3051,12 +3153,21 @@ function setCameraMuted(muted, streamOverride = null) {
 function setMicEnabled(enabled, streamOverride = null) {
   avControls.micEnabled = enabled;
   const stream =
-    streamOverride || state.recordingAudio || micPreviewStream || null;
+    streamOverride ||
+    state.recordingAudio ||
+    liveAudioStream ||
+    micPreviewStream ||
+    null;
   stream?.getAudioTracks()?.forEach((track) => {
     track.enabled = enabled;
   });
   if (state.recordingAudio) {
     state.recordingAudio.getAudioTracks()?.forEach((track) => {
+      track.enabled = enabled;
+    });
+  }
+  if (liveAudioStream) {
+    liveAudioStream.getAudioTracks()?.forEach((track) => {
       track.enabled = enabled;
     });
   }
@@ -3072,7 +3183,7 @@ function setCamPaused(paused) {
 
 function setMicPaused(paused) {
   micPaused.value = paused;
-  const stream = state.recordingAudio || micPreviewStream;
+  const stream = state.recordingAudio || liveAudioStream || micPreviewStream;
   stream?.getAudioTracks()?.forEach((track) => {
     track.enabled = !paused;
   });
@@ -3157,10 +3268,16 @@ function toggleMic() {
       if (!micPreviewStream && !isRecording.value) {
         await startMicPreview();
       }
+      if (isLiveBroadcasting.value) {
+        await refreshLiveAudioTrack();
+      }
     });
   } else {
-    stopMicPreview();
-    setMicPaused(false);
+    setMicPaused(true);
+    if (!isLiveBroadcasting.value) {
+      stopMicPreview();
+      setMicPaused(false);
+    }
   }
 }
 
@@ -3177,11 +3294,8 @@ function toggleMicPause() {
 async function startMicPreview() {
   if (micPreviewStream || isRecording.value) return;
   try {
-    const audioConstraints = precheck.micId
-      ? { deviceId: { exact: precheck.micId } }
-      : true;
     micPreviewStream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
+      audio: micConstraints.value,
     });
     setMicEnabled(true, micPreviewStream);
     startMicMeter(micPreviewStream);
