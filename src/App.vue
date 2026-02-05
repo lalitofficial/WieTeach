@@ -786,6 +786,27 @@
               <span class="live-dot"></span>
               LIVE
             </div>
+            <div v-if="isLiveBroadcasting" class="live-meters">
+              <span class="live-meter">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="5" width="16" height="12" rx="2" />
+                  <path d="M9 10l6 3-6 3z" />
+                </svg>
+                {{ liveBitrateKbps }} kbps
+              </span>
+              <span class="live-meter">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z" />
+                  <path d="M5 12a7 7 0 0 0 14 0" />
+                  <path d="M12 19v2" />
+                </svg>
+                {{
+                  liveAudioMeterStatus === "active"
+                    ? `${liveAudioBitrateKbps} kbps`
+                    : "n/a"
+                }}
+              </span>
+            </div>
           </div>
 
           <div v-if="pdfImportStatus.active" class="status-overlay">
@@ -1352,7 +1373,9 @@
                       />
                     </div>
                     <div class="live-status">
-                      <span>Live: {{ liveStatus }}</span>
+                      <span>
+                        Live: {{ liveStatus }} • {{ liveBitrateKbps }} kbps
+                      </span>
                       <button
                         class="pill-btn"
                         :class="{ danger: isLiveBroadcasting }"
@@ -1732,6 +1755,13 @@ let liveAudioStream = null;
 let liveSilentContext = null;
 let liveOwnsAudio = false;
 let liveAudioContext = null;
+let liveBytesSent = 0;
+let liveMeterTimer = null;
+const liveBitrateKbps = ref(0);
+let liveAudioBytesSent = 0;
+let liveAudioMeterRecorder = null;
+const liveAudioBitrateKbps = ref(0);
+const liveAudioMeterStatus = ref("active");
 const toast = reactive({
   visible: false,
   message: "",
@@ -1760,9 +1790,9 @@ const precheck = reactive({
 });
 const micConstraints = computed(() => ({
   deviceId: precheck.micId ? { exact: precheck.micId } : undefined,
-  echoCancellation: false,
-  noiseSuppression: false,
-  autoGainControl: false,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
 }));
 const avControls = reactive({
   cameraEnabled: false,
@@ -2066,6 +2096,31 @@ function showActionToast(message, actionLabel, action, type = "info") {
 function handleToastAction() {
   if (toast.action) toast.action();
   toast.visible = false;
+}
+
+function startLiveBitrateMeter() {
+  if (liveMeterTimer) clearInterval(liveMeterTimer);
+  liveBytesSent = 0;
+  liveAudioBytesSent = 0;
+  liveBitrateKbps.value = 0;
+  liveAudioBitrateKbps.value = 0;
+  liveAudioMeterStatus.value = "active";
+  liveMeterTimer = setInterval(() => {
+    liveBitrateKbps.value = Math.round((liveBytesSent * 8) / 1000);
+    liveBytesSent = 0;
+    liveAudioBitrateKbps.value = Math.round((liveAudioBytesSent * 8) / 1000);
+    liveAudioBytesSent = 0;
+  }, 1000);
+}
+
+function stopLiveBitrateMeter() {
+  if (liveMeterTimer) clearInterval(liveMeterTimer);
+  liveMeterTimer = null;
+  liveBytesSent = 0;
+  liveBitrateKbps.value = 0;
+  liveAudioBitrateKbps.value = 0;
+  liveAudioBytesSent = 0;
+  liveAudioMeterStatus.value = "inactive";
 }
 
 function createSilentAudioTrack() {
@@ -3500,6 +3555,11 @@ function pickMimeType() {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 
+function pickAudioMimeType() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm"];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
 function startRecordingTimer() {
   if (recordingTimer) clearInterval(recordingTimer);
   recordingStartTs.value = Date.now();
@@ -3871,15 +3931,18 @@ async function startLiveBroadcast() {
     liveSocket.onopen = () => {
       liveSocket?.send(JSON.stringify({ type: "start", rtmpUrl }));
       liveStatus.value = "Live";
+      startLiveBitrateMeter();
     };
     liveSocket.onerror = () => {
       liveStatus.value = "Error";
       showToast("Live relay connection failed", "error");
+      stopLiveBitrateMeter();
     };
     liveSocket.onclose = () => {
       if (isLiveBroadcasting.value) {
         liveStatus.value = "Disconnected";
       }
+      stopLiveBitrateMeter();
     };
 
     const fps = recordingSettings.value.fps || 30;
@@ -3924,6 +3987,30 @@ async function startLiveBroadcast() {
     if (!liveStream.getAudioTracks().length) {
       showToast("Live stream has no audio track", "error");
     }
+    if (liveStream.getAudioTracks().length) {
+      const audioOnlyStream = new MediaStream(liveStream.getAudioTracks());
+      const audioMimeType = pickAudioMimeType();
+      if (!audioMimeType) {
+        liveAudioMeterStatus.value = "unsupported";
+        showToast("Audio meter unsupported in this browser", "warn");
+      } else {
+        liveAudioMeterRecorder = new MediaRecorder(audioOnlyStream, {
+          mimeType: audioMimeType || undefined,
+          audioBitsPerSecond: 192_000,
+        });
+        liveAudioMeterRecorder.ondataavailable = async (evt) => {
+          if (!evt.data || !evt.data.size) return;
+          const buffer = await evt.data.arrayBuffer();
+          liveAudioBytesSent += buffer.byteLength;
+        };
+        liveAudioMeterRecorder.onerror = () => {
+          liveAudioMeterStatus.value = "error";
+        };
+        liveAudioMeterRecorder.start(1000);
+      }
+    } else {
+      liveAudioMeterStatus.value = "no-audio";
+    }
     startRecordingLoop();
     const mimeType = pickMimeType();
     liveRecorder = new MediaRecorder(liveStream, {
@@ -3938,6 +4025,7 @@ async function startLiveBroadcast() {
       if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
       const buffer = await evt.data.arrayBuffer();
       liveSocket.send(buffer);
+      liveBytesSent += buffer.byteLength;
     };
     liveRecorder.onstop = () => {
       liveStatus.value = "Idle";
@@ -3954,10 +4042,16 @@ function stopLiveBroadcast() {
   if (!isLiveBroadcasting.value) return;
   isLiveBroadcasting.value = false;
   liveStatus.value = "Stopping";
+  stopLiveBitrateMeter();
+  stopLiveAudioBitrateMeter();
   if (liveRecorder && liveRecorder.state !== "inactive") {
     liveRecorder.stop();
   }
   liveRecorder = null;
+  if (liveAudioMeterRecorder && liveAudioMeterRecorder.state !== "inactive") {
+    liveAudioMeterRecorder.stop();
+  }
+  liveAudioMeterRecorder = null;
   if (liveStream) {
     liveStream.getTracks().forEach((track) => track.stop());
   }
