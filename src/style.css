@@ -732,6 +732,23 @@ body {
   touch-action: none;
 }
 
+.slide-transition {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 40ms ease;
+  pointer-events: none;
+  background: #000;
+}
+
+.slide-transition.in {
+  opacity: 1;
+}
+
+.slide-transition.out {
+  opacity: 0;
+}
+
 #overlayCanvas {
   pointer-events: none;
 }

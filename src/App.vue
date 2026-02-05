@@ -546,6 +546,11 @@
               @pointercancel="handlePointerUp"
             ></canvas>
             <canvas id="overlayCanvas" ref="overlayCanvas"></canvas>
+            <div
+              v-if="slideTransition.visible"
+              class="slide-transition"
+              :class="slideTransition.phase"
+            ></div>
           </div>
 
           <div
@@ -1438,6 +1443,8 @@ const templateAssetModules = import.meta.glob(
   "./assets/templates/*.{png,jpg,jpeg,webp}",
   { eager: true, import: "default" },
 );
+const SLIDE_TRANSITION_ENABLED =
+  import.meta.env.VITE_SLIDE_TRANSITION !== "false";
 
 const zoomLabel = "2.95";
 const validRoutes = new Set(["/", "/class", "/recordings"]);
@@ -1723,6 +1730,11 @@ const filteredRecordings = computed(() => {
     const created = (rec.createdAt || "").toLowerCase();
     return name.includes(query) || created.includes(query);
   });
+});
+const slideTransition = reactive({
+  visible: false,
+  phase: "",
+  token: 0,
 });
 const selectedIconStrokes = computed(() => {
   const slide = getActiveSlide();
@@ -4309,6 +4321,23 @@ function renderAllThumbnails() {
   slides.value.forEach((slide) => renderSlideToThumb(slide));
 }
 
+function startSlideTransition(onMidpoint) {
+  slideTransition.token += 1;
+  const token = slideTransition.token;
+  slideTransition.visible = true;
+  slideTransition.phase = "in";
+  setTimeout(() => {
+    if (token !== slideTransition.token) return;
+    if (onMidpoint) onMidpoint();
+    slideTransition.phase = "out";
+  }, 40);
+  setTimeout(() => {
+    if (token !== slideTransition.token) return;
+    slideTransition.visible = false;
+    slideTransition.phase = "";
+  }, 50);
+}
+
 function switchSlide(index) {
   if (
     index === currentSlideIndex.value ||
@@ -4317,10 +4346,19 @@ function switchSlide(index) {
   )
     return;
   updateThumbnail();
-  currentSlideIndex.value = index;
-  clearSelection();
-  redrawAll();
-  markDirty();
+  if (!SLIDE_TRANSITION_ENABLED) {
+    currentSlideIndex.value = index;
+    clearSelection();
+    redrawAll();
+    markDirty();
+    return;
+  }
+  startSlideTransition(() => {
+    currentSlideIndex.value = index;
+    clearSelection();
+    redrawAll();
+    markDirty();
+  });
 }
 
 function addSlide() {
