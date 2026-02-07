@@ -551,6 +551,191 @@
               @pointercancel="handlePointerUp"
             ></canvas>
             <canvas id="overlayCanvas" ref="overlayCanvas"></canvas>
+            <div class="widget-layer">
+              <div
+                v-for="widget in widgets"
+                :key="widget.id"
+                class="widget-shell"
+                :class="{
+                  active: widget.id === activeWidgetId,
+                  dragging: widget.dragging,
+                  resizing: widget.resizing,
+                }"
+                :style="getWidgetStyle(widget)"
+              >
+                <div class="widget-card">
+                  <div
+                    class="widget-header"
+                    @pointerdown.stop="onWidgetDragStart(widget, $event)"
+                  >
+                    <span class="widget-title">
+                      {{ widget.type === "clock" ? "Clock" : "Timer" }}
+                    </span>
+                    <button
+                      class="widget-icon-btn"
+                      title="Remove widget"
+                      @click.stop="removeWidget(widget.id)"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 6l12 12M6 18L18 6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    v-if="widget.type === 'clock'"
+                    class="widget-body widget-clock-body"
+                  >
+                    <div class="widget-clock-row">
+                      <div class="widget-clock-main">
+                        {{ getClockParts(clockNow).main }}
+                      </div>
+                      <div class="widget-clock-side">
+                        <span class="widget-clock-seconds">
+                          {{ getClockParts(clockNow).seconds }}
+                        </span>
+                        <span class="widget-clock-suffix">
+                          {{ getClockParts(clockNow).suffix }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else-if="widget.type === 'timer'" class="widget-body">
+                    <div class="widget-timer-display">
+                      <svg class="widget-timer-ring" viewBox="0 0 120 120">
+                        <circle class="ring-track" cx="60" cy="60" r="44" />
+                        <circle
+                          class="ring-progress"
+                          cx="60"
+                          cy="60"
+                          r="44"
+                          :style="{
+                            strokeDasharray: timerRingCircumference,
+                            strokeDashoffset:
+                              timerRingCircumference *
+                              (1 - getTimerProgress(widget)),
+                          }"
+                        />
+                      </svg>
+                      <div class="widget-timer-main">
+                        {{ formatDuration(widget.timer.remainingMs) }}
+                      </div>
+                    </div>
+                    <div class="widget-timer-controls">
+                      <button
+                        class="widget-control-btn"
+                        :title="widget.timer.running ? 'Pause' : 'Start'"
+                        @click.stop="toggleTimer(widget)"
+                      >
+                        <svg v-if="!widget.timer.running" viewBox="0 0 24 24">
+                          <path d="M6 4l14 8-14 8z" />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24">
+                          <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                        </svg>
+                      </button>
+                      <button
+                        class="widget-control-btn"
+                        title="Reset"
+                        @click.stop="resetTimer(widget)"
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 6v6l4 2" />
+                          <path d="M6 6a8 8 0 1 1-2 6" />
+                          <path d="M3 6h4v4" />
+                        </svg>
+                      </button>
+                      <input
+                        class="widget-time-input"
+                        type="text"
+                        :disabled="widget.timer.running"
+                        v-model="widget.timer.input"
+                        @keydown.enter.prevent="applyTimerInput(widget)"
+                        @blur="applyTimerInput(widget)"
+                        placeholder="05:00"
+                        title="Set timer (mm:ss)"
+                      />
+                    </div>
+                  </div>
+                  <div v-else-if="widget.type === 'qr'" class="widget-body">
+                    <div class="widget-qr-preview">
+                      <img
+                        v-if="widget.qr.dataUrl"
+                        :src="widget.qr.dataUrl"
+                        alt="QR code"
+                      />
+                      <div v-else class="widget-qr-placeholder">
+                        QR
+                      </div>
+                    </div>
+                    <input
+                      class="widget-qr-input"
+                      type="text"
+                      v-model="widget.qr.text"
+                      @input="scheduleQrUpdate(widget)"
+                      placeholder="Paste URL"
+                      title="QR text"
+                    />
+                  </div>
+                  <div v-else class="widget-body widget-stopwatch-body">
+                    <div class="widget-stopwatch-main">
+                      {{ formatStopwatch(widget.stopwatch.elapsedMs) }}
+                    </div>
+                    <div class="widget-stopwatch-controls">
+                      <button
+                        class="widget-control-btn"
+                        :title="widget.stopwatch.running ? 'Pause' : 'Start'"
+                        @click.stop="toggleStopwatch(widget)"
+                      >
+                        <svg
+                          v-if="!widget.stopwatch.running"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M6 4l14 8-14 8z" />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24">
+                          <path d="M7 5h4v14H7zM13 5h4v14h-4z" />
+                        </svg>
+                      </button>
+                      <button
+                        class="widget-control-btn"
+                        title="Lap (Q)"
+                        @click.stop="lapStopwatch(widget)"
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 6v6l4 2" />
+                          <path d="M6 6h4" />
+                        </svg>
+                      </button>
+                      <button
+                        class="widget-control-btn"
+                        title="Reset"
+                        @click.stop="resetStopwatch(widget)"
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path d="M12 6v6l4 2" />
+                          <path d="M6 6a8 8 0 1 1-2 6" />
+                          <path d="M3 6h4v4" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div v-if="widget.stopwatch.laps.length" class="widget-laps">
+                      <div
+                        v-for="lap in widget.stopwatch.laps.slice(-3).reverse()"
+                        :key="lap.label"
+                        class="widget-lap-row"
+                      >
+                        <span>{{ lap.label }}</span>
+                        <span>{{ formatStopwatch(lap.timeMs) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  class="widget-resize-handle"
+                  @pointerdown.stop="onWidgetResizeStart(widget, $event)"
+                ></div>
+              </div>
+            </div>
             <div
               v-if="slideTransition.visible"
               class="slide-transition"
@@ -741,6 +926,17 @@
                 <rect x="13" y="13" width="7" height="7" rx="1" />
               </svg>
             </button>
+            <button
+              class="tool-btn"
+              :class="{ active: showWidgetPopover }"
+              title="Widgets"
+              @click="toggleWidgetPopover"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            </button>
             <div class="dock-divider horizontal"></div>
             <button
               class="tool-btn"
@@ -796,7 +992,9 @@
               </span>
               <span class="live-meter">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z" />
+                  <path
+                    d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3z"
+                  />
                   <path d="M5 12a7 7 0 0 0 14 0" />
                   <path d="M12 19v2" />
                 </svg>
@@ -1204,6 +1402,72 @@
                   <span>{{ tpl.label }}</span>
                 </button>
               </template>
+            </div>
+          </div>
+
+          <div
+            class="popover widget-popover"
+            :class="{ hidden: !showWidgetPopover }"
+          >
+            <div class="popover-header">
+              <span>Widgets</span>
+              <button class="close-btn" @click="showWidgetPopover = false">
+                &times;
+              </button>
+            </div>
+            <div class="widget-grid">
+              <button class="widget-option" @click="addWidget('clock')">
+                <span class="widget-option-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                </span>
+                <span class="widget-option-text">
+                  <strong>Clock</strong>
+                  <span>Live time overlay</span>
+                </span>
+              </button>
+              <button class="widget-option" @click="addWidget('timer')">
+                <span class="widget-option-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="13" r="7" />
+                    <path d="M9 3h6" />
+                    <path d="M12 10v4l3 2" />
+                  </svg>
+                </span>
+                <span class="widget-option-text">
+                  <strong>Timer</strong>
+                  <span>Countdown with controls</span>
+                </span>
+              </button>
+              <button class="widget-option" @click="addWidget('stopwatch')">
+                <span class="widget-option-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="13" r="7" />
+                    <path d="M9 3h6" />
+                    <path d="M12 9v5" />
+                  </svg>
+                </span>
+                <span class="widget-option-text">
+                  <strong>Stopwatch</strong>
+                  <span>Lap as Q1, Q2…</span>
+                </span>
+              </button>
+              <button class="widget-option" @click="addWidget('qr')">
+                <span class="widget-option-icon">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="4" y="4" width="6" height="6" />
+                    <rect x="14" y="4" width="6" height="6" />
+                    <rect x="4" y="14" width="6" height="6" />
+                    <path d="M14 14h3v3h-3zM18 18h2" />
+                  </svg>
+                </span>
+                <span class="widget-option-text">
+                  <strong>QR code</strong>
+                  <span>Share a URL</span>
+                </span>
+              </button>
             </div>
           </div>
 
@@ -1670,6 +1934,7 @@ const size = ref(TOOL_DEFAULTS.pen.size);
 const showColorPopover = ref(false);
 const showShapePopover = ref(false);
 const showTemplatePopover = ref(false);
+const showWidgetPopover = ref(false);
 const showPenPopover = ref(false);
 const showEraserPopover = ref(false);
 const showSettingsPopover = ref(false);
@@ -1765,6 +2030,18 @@ let liveAudioBytesSent = 0;
 let liveAudioMeterRecorder = null;
 const liveAudioBitrateKbps = ref(0);
 const liveAudioMeterStatus = ref("active");
+const widgets = ref([]);
+const activeWidgetId = ref(null);
+const clockNow = ref(new Date());
+let widgetTickInterval = null;
+let widgetDragState = null;
+let widgetResizeState = null;
+const TIMER_RING_RADIUS = 44;
+const timerRingCircumference = 2 * Math.PI * TIMER_RING_RADIUS;
+const WIDGET_MIN_WIDTH = 180;
+const WIDGET_MIN_HEIGHT = 110;
+let qrLibPromise = null;
+const qrImageCache = new Map();
 const toast = reactive({
   visible: false,
   message: "",
@@ -3585,6 +3862,39 @@ function formatDuration(ms) {
   return `${m}:${s}`;
 }
 
+function getClockParts(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const hours = d.getHours();
+  const isPm = hours >= 12;
+  const h12 = hours % 12 || 12;
+  const main = `${h12.toString().padStart(2, "0")}:${d
+    .getMinutes()
+    .toString()
+    .padStart(2, "0")}`;
+  return {
+    main,
+    seconds: d.getSeconds().toString().padStart(2, "0"),
+    suffix: isPm ? "PM" : "AM",
+  };
+}
+
+function parseTimerInput(raw) {
+  if (!raw) return null;
+  const cleaned = raw.trim();
+  if (!cleaned) return null;
+  if (/^\d+$/.test(cleaned)) {
+    const mins = Math.max(0, parseInt(cleaned, 10));
+    return mins * 60 * 1000;
+  }
+  const parts = cleaned.split(":").map((p) => p.trim());
+  if (parts.length !== 2) return null;
+  const mins = parseInt(parts[0], 10);
+  const secs = parseInt(parts[1], 10);
+  if (Number.isNaN(mins) || Number.isNaN(secs)) return null;
+  if (secs < 0 || secs > 59) return null;
+  return Math.max(0, mins) * 60 * 1000 + secs * 1000;
+}
+
 function hexToRgb(hex) {
   if (!hex || hex[0] !== "#" || hex.length < 7) return [0, 255, 0];
   const r = parseInt(hex.slice(1, 3), 16);
@@ -3724,6 +4034,14 @@ function renderRecordingFrame() {
 
   // ⭐ Webcam (need to account for logical → physical → recording conversion)
   drawWebcamLayerComposite(
+    recordCompositeCtx,
+    scaleX,
+    scaleY,
+    offsetX,
+    offsetY,
+    ratio,
+  );
+  drawWidgetsComposite(
     recordCompositeCtx,
     scaleX,
     scaleY,
@@ -3895,6 +4213,171 @@ function drawWebcamLayerComposite(
   ctx.restore();
 }
 
+function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
+  if (!widgets.value.length) return;
+  const clockParts = getClockParts(clockNow.value);
+  const scaleFactor = Math.min(scaleX, scaleY);
+  const padding = 10 * ratio * scaleFactor;
+  const labelSize = Math.max(9, 10 * ratio * scaleFactor);
+  const timeSize = Math.max(16, 30 * ratio * scaleFactor);
+
+  widgets.value.forEach((widget) => {
+    const physicalX = widget.x * ratio;
+    const physicalY = widget.y * ratio;
+    const physicalWidth = widget.width * ratio;
+    const physicalHeight = widget.height * ratio;
+    const w = physicalWidth * scaleX;
+    const h = physicalHeight * scaleY;
+    const x = offsetX + physicalX * scaleX;
+    const y = offsetY + physicalY * scaleY;
+
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    const radius = 14 * ratio * scaleFactor;
+    drawRoundedRectPath(ctx, x, y, w, h, radius);
+    const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+    gradient.addColorStop(0, "rgba(15, 23, 42, 0.75)");
+    gradient.addColorStop(1, "rgba(15, 23, 42, 0.35)");
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+    ctx.lineWidth = Math.max(1, 1.4 * ratio * scaleFactor);
+    ctx.stroke();
+
+    const label =
+      widget.type === "clock"
+        ? "CLOCK"
+        : widget.type === "timer"
+          ? "TIMER"
+          : widget.type === "stopwatch"
+            ? "STOPWATCH"
+            : "QR CODE";
+
+    ctx.fillStyle = "rgba(226, 232, 240, 0.8)";
+    ctx.font = `${labelSize}px "Space Grotesk", sans-serif`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, x + padding, y + padding);
+
+    if (widget.type === "qr") {
+      const img = widget.qr?.dataUrl
+        ? qrImageCache.get(widget.qr.dataUrl)
+        : null;
+      if (img && img.complete) {
+        const size = Math.min(w, h) - padding * 2.2;
+        const ix = x + (w - size) / 2;
+        const iy = y + (h - size) / 2 + padding * 0.6;
+        ctx.fillStyle = "#ffffff";
+        ctx.save();
+        drawRoundedRectPath(ctx, ix, iy, size, size, 10 * ratio * scaleFactor);
+        ctx.fill();
+        ctx.clip();
+        ctx.drawImage(img, ix, iy, size, size);
+        ctx.restore();
+      }
+      ctx.restore();
+      return;
+    }
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = `600 ${timeSize}px "Space Grotesk", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const centerY = y + h * 0.6;
+    const mainText =
+      widget.type === "clock"
+        ? clockParts.main
+        : widget.type === "timer"
+          ? formatDuration(widget.timer.remainingMs)
+          : formatStopwatch(widget.stopwatch.elapsedMs);
+
+    if (widget.type === "timer") {
+      const ringRadius = Math.min(w, h) * 0.28;
+      ctx.save();
+      ctx.translate(x + w / 2, centerY);
+      ctx.rotate(-Math.PI / 2);
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+      ctx.lineWidth = Math.max(1.2, ringRadius * 0.12);
+      ctx.beginPath();
+      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.9)";
+      const progress = getTimerProgress(widget);
+      ctx.beginPath();
+      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2 * progress);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.fillText(mainText, x + w / 2, centerY);
+
+    if (widget.type === "clock") {
+      const mainWidth = ctx.measureText(mainText).width;
+      const sideX = x + w / 2 + mainWidth / 2 + padding * 0.6;
+      const secondsSize = timeSize * 0.42;
+      const suffixSize = timeSize * 0.28;
+      ctx.save();
+      ctx.font = `600 ${secondsSize}px "Space Grotesk", sans-serif`;
+      const secondsWidth = ctx.measureText(clockParts.seconds).width;
+      ctx.font = `600 ${suffixSize}px "Space Grotesk", sans-serif`;
+      const suffixWidth = ctx.measureText(clockParts.suffix).width;
+      ctx.restore();
+      const pillWidth = Math.max(secondsWidth, suffixWidth) + padding * 1.2;
+      const pillHeight = secondsSize + suffixSize + padding * 0.9;
+      const pillX = sideX;
+      const pillY = centerY - pillHeight / 2;
+      const pillRadius = 8 * ratio * scaleFactor;
+      ctx.save();
+      drawRoundedRectPath(ctx, pillX, pillY, pillWidth, pillHeight, pillRadius);
+      const pillGradient = ctx.createLinearGradient(
+        pillX,
+        pillY,
+        pillX,
+        pillY + pillHeight,
+      );
+      pillGradient.addColorStop(0, "rgba(15, 23, 42, 0.65)");
+      pillGradient.addColorStop(1, "rgba(15, 23, 42, 0.35)");
+      ctx.fillStyle = pillGradient;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.lineWidth = Math.max(1, 1.1 * ratio * scaleFactor);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(248, 250, 252, 0.9)";
+      ctx.font = `600 ${secondsSize}px "Space Grotesk", sans-serif`;
+      ctx.fillText(
+        clockParts.seconds,
+        pillX + padding * 0.6,
+        centerY - secondsSize * 0.25,
+      );
+      ctx.font = `600 ${suffixSize}px "Space Grotesk", sans-serif`;
+      ctx.fillStyle = "rgba(248, 250, 252, 0.75)";
+      ctx.fillText(
+        clockParts.suffix,
+        pillX + padding * 0.6,
+        centerY + suffixSize * 0.9,
+      );
+    }
+
+    if (widget.type === "stopwatch" && widget.stopwatch?.laps?.length) {
+      const lastLap = widget.stopwatch.laps[widget.stopwatch.laps.length - 1];
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "rgba(226, 232, 240, 0.7)";
+      ctx.font = `${labelSize}px "Space Grotesk", sans-serif`;
+      ctx.fillText(
+        `${lastLap.label} ${formatStopwatch(lastLap.timeMs)}`,
+        x + w / 2,
+        y + h - padding * 1.4,
+      );
+    }
+    ctx.restore();
+  });
+}
+
 function startWebcamLoop() {
   if (webcamRaf) cancelAnimationFrame(webcamRaf);
   const step = () => {
@@ -4057,10 +4540,11 @@ async function startLiveBroadcast() {
     }
     if (liveAudioDestination?.stream?.getAudioTracks?.().length) {
       const audioOnlyStream = liveAudioDestination.stream;
-      const audioMimeType =
-        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : pickAudioMimeType();
+      const audioMimeType = MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus",
+      )
+        ? "audio/webm;codecs=opus"
+        : pickAudioMimeType();
       if (!audioMimeType) {
         liveAudioMeterStatus.value = "unsupported";
         showToast("Audio meter unsupported in this browser", "warn");
@@ -4083,10 +4567,9 @@ async function startLiveBroadcast() {
       liveAudioMeterStatus.value = "no-audio";
     }
     startRecordingLoop();
-    const mimeType =
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-        ? "video/webm;codecs=vp8,opus"
-        : pickMimeType();
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+      ? "video/webm;codecs=vp8,opus"
+      : pickMimeType();
     liveRecorder = new MediaRecorder(liveStream, {
       mimeType: mimeType || undefined,
       videoBitsPerSecond: Math.round(
@@ -4232,9 +4715,9 @@ async function startRecording() {
     const canvasStream = captureCanvas.captureStream(fps);
     let audioStream = null;
     try {
-    audioStream = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints.value,
-    });
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: micConstraints.value,
+      });
       setMicEnabled(avControls.micEnabled, audioStream);
       loadDevices();
       startMicMeter(audioStream);
@@ -4485,6 +4968,7 @@ function resizeCanvases() {
   }
 
   updateDockMetrics();
+  clampWidgetsToStage();
   if (
     webcam.enabled &&
     !webcam.dragging &&
@@ -4990,6 +5474,7 @@ function setTool(nextTool) {
     showEraserPopover.value = false;
   }
   showSettingsPopover.value = false;
+  showWidgetPopover.value = false;
   if (nextTool !== "fill") {
     showTemplatePopover.value = false;
   }
@@ -5029,6 +5514,7 @@ function toggleColorPopover() {
     showPenPopover.value = false;
     showEraserPopover.value = false;
     showSettingsPopover.value = false;
+    showWidgetPopover.value = false;
   }
 }
 
@@ -5042,6 +5528,7 @@ function toggleFillPopover() {
     showPenPopover.value = false;
     showEraserPopover.value = false;
     showSettingsPopover.value = false;
+    showWidgetPopover.value = false;
   }
 }
 
@@ -5057,6 +5544,7 @@ function toggleSettingsPopover() {
     showColorPopover.value = false;
     showPenPopover.value = false;
     showEraserPopover.value = false;
+    showWidgetPopover.value = false;
   }
 }
 
@@ -5071,6 +5559,7 @@ function togglePenPopover() {
     showColorPopover.value = false;
     showEraserPopover.value = false;
     showSettingsPopover.value = false;
+    showWidgetPopover.value = false;
   }
 }
 
@@ -5085,6 +5574,7 @@ function toggleEraserPopover() {
     showColorPopover.value = false;
     showPenPopover.value = false;
     showSettingsPopover.value = false;
+    showWidgetPopover.value = false;
   }
 }
 
@@ -5096,7 +5586,433 @@ function toggleTemplatePopover() {
     showPenPopover.value = false;
     showEraserPopover.value = false;
     showSettingsPopover.value = false;
+    showWidgetPopover.value = false;
   }
+}
+
+function toggleWidgetPopover() {
+  showWidgetPopover.value = !showWidgetPopover.value;
+  if (showWidgetPopover.value) {
+    showColorPopover.value = false;
+    showShapePopover.value = false;
+    showTemplatePopover.value = false;
+    showPenPopover.value = false;
+    showEraserPopover.value = false;
+    showSettingsPopover.value = false;
+  }
+}
+
+function getWidgetBounds() {
+  const rect = canvasStack.value?.getBoundingClientRect();
+  if (!rect) {
+    return { width: 0, height: 0, left: 0, top: 0 };
+  }
+  return {
+    width: rect.width,
+    height: rect.height,
+    left: rect.left,
+    top: rect.top,
+  };
+}
+
+function clampWidgetToStage(widget) {
+  const bounds = getWidgetBounds();
+  if (!bounds.width || !bounds.height) return;
+  const aspect = widget.aspect || widget.width / widget.height || 1;
+  const minW = widget.minWidth || WIDGET_MIN_WIDTH;
+  const minH = widget.minHeight || WIDGET_MIN_HEIGHT;
+  if (widget.width < minW) {
+    widget.width = minW;
+    widget.height = widget.width / aspect;
+  }
+  if (widget.height < minH) {
+    widget.height = minH;
+    widget.width = widget.height * aspect;
+  }
+  if (widget.width > bounds.width) {
+    widget.width = bounds.width;
+    widget.height = widget.width / aspect;
+  }
+  if (widget.height > bounds.height) {
+    widget.height = bounds.height;
+    widget.width = widget.height * aspect;
+  }
+  const maxX = Math.max(0, bounds.width - widget.width);
+  const maxY = Math.max(0, bounds.height - widget.height);
+  widget.x = Math.max(0, Math.min(widget.x, maxX));
+  widget.y = Math.max(0, Math.min(widget.y, maxY));
+}
+
+function clampValue(value, min, max) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function getWidgetStyle(widget) {
+  const base = Math.max(1, Math.min(widget.width, widget.height));
+  return {
+    left: `${widget.x}px`,
+    top: `${widget.y}px`,
+    width: `${widget.width}px`,
+    height: `${widget.height}px`,
+    "--widget-base": `${base}px`,
+  };
+}
+
+function clampWidgetsToStage() {
+  widgets.value.forEach((widget) => clampWidgetToStage(widget));
+}
+
+function createTimerState(durationMs) {
+  return {
+    durationMs,
+    remainingMs: durationMs,
+    running: false,
+    lastTick: null,
+    input: formatDuration(durationMs),
+  };
+}
+
+function createStopwatchState() {
+  return {
+    elapsedMs: 0,
+    running: false,
+    lastTick: null,
+    laps: [],
+  };
+}
+
+function createQrState() {
+  return {
+    text: "",
+    dataUrl: "",
+    loading: false,
+    debounce: null,
+  };
+}
+
+function addWidget(type) {
+  const bounds = getWidgetBounds();
+  let base = { w: 300, h: 190, minW: 220, minH: 140 };
+  if (type === "clock") {
+    base = { w: 220, h: 140, minW: 180, minH: 115 };
+  } else if (type === "stopwatch") {
+    base = { w: 280, h: 170, minW: 220, minH: 140 };
+  } else if (type === "qr") {
+    base = { w: 220, h: 220, minW: 180, minH: 180 };
+  }
+  const offset = widgets.value.length * 18;
+  const startX = bounds.width ? (bounds.width - base.w) * 0.5 : 40;
+  const startY = bounds.height ? (bounds.height - base.h) * 0.5 : 40;
+  const widget = {
+    id: `widget-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    x: startX + offset,
+    y: startY + offset,
+    width: base.w,
+    height: base.h,
+    aspect: base.w / base.h,
+    minWidth: base.minW,
+    minHeight: base.minH,
+    dragging: false,
+    resizing: false,
+    timer: type === "timer" ? createTimerState(5 * 60 * 1000) : null,
+    stopwatch: type === "stopwatch" ? createStopwatchState() : null,
+    qr: type === "qr" ? createQrState() : null,
+  };
+  widgets.value.push(widget);
+  activeWidgetId.value = widget.id;
+  clampWidgetToStage(widget);
+  showWidgetPopover.value = false;
+  if (widget.type === "qr") {
+    widget.qr.text = "https://";
+    scheduleQrUpdate(widget, true);
+  }
+}
+
+function removeWidget(widgetId) {
+  const idx = widgets.value.findIndex((widget) => widget.id === widgetId);
+  if (idx === -1) return;
+  const widget = widgets.value[idx];
+  if (widget?.qr?.debounce) {
+    clearTimeout(widget.qr.debounce);
+  }
+  widgets.value.splice(idx, 1);
+  if (activeWidgetId.value === widgetId) {
+    activeWidgetId.value =
+      widgets.value.length > 0
+        ? widgets.value[widgets.value.length - 1].id
+        : null;
+  }
+}
+
+function setTimerDuration(widget, durationMs) {
+  const next = Math.max(0, durationMs || 0);
+  widget.timer.durationMs = next;
+  widget.timer.remainingMs = next;
+  widget.timer.running = false;
+  widget.timer.lastTick = null;
+  widget.timer.input = formatDuration(next);
+}
+
+function applyTimerInput(widget) {
+  const parsed = parseTimerInput(widget.timer.input);
+  if (parsed === null) {
+    widget.timer.input = formatDuration(widget.timer.durationMs);
+    return;
+  }
+  setTimerDuration(widget, parsed);
+}
+
+function getTimerProgress(widget) {
+  if (!widget?.timer?.durationMs) return 0;
+  const elapsed = widget.timer.durationMs - widget.timer.remainingMs;
+  return Math.min(1, Math.max(0, elapsed / widget.timer.durationMs));
+}
+
+function toggleTimer(widget) {
+  if (!widget?.timer) return;
+  if (widget.timer.running) {
+    widget.timer.running = false;
+    widget.timer.lastTick = null;
+    return;
+  }
+  if (widget.timer.remainingMs <= 0) {
+    widget.timer.remainingMs = widget.timer.durationMs;
+  }
+  widget.timer.running = true;
+  widget.timer.lastTick = Date.now();
+}
+
+function resetTimer(widget) {
+  if (!widget?.timer) return;
+  setTimerDuration(widget, widget.timer.durationMs);
+}
+
+function formatStopwatch(ms) {
+  return formatDuration(ms);
+}
+
+function toggleStopwatch(widget) {
+  if (!widget?.stopwatch) return;
+  if (widget.stopwatch.running) {
+    widget.stopwatch.running = false;
+    widget.stopwatch.lastTick = null;
+    return;
+  }
+  widget.stopwatch.running = true;
+  widget.stopwatch.lastTick = Date.now();
+}
+
+function lapStopwatch(widget) {
+  if (!widget?.stopwatch) return;
+  const count = widget.stopwatch.laps.length + 1;
+  widget.stopwatch.laps.push({
+    label: `Q${count}`,
+    timeMs: widget.stopwatch.elapsedMs,
+  });
+}
+
+function resetStopwatch(widget) {
+  if (!widget?.stopwatch) return;
+  widget.stopwatch.elapsedMs = 0;
+  widget.stopwatch.running = false;
+  widget.stopwatch.lastTick = null;
+  widget.stopwatch.laps = [];
+}
+
+function loadQrLib() {
+  if (!qrLibPromise) {
+    qrLibPromise = import("qrcode");
+  }
+  return qrLibPromise;
+}
+
+function scheduleQrUpdate(widget, immediate = false) {
+  if (!widget?.qr) return;
+  if (widget.qr.debounce) {
+    clearTimeout(widget.qr.debounce);
+    widget.qr.debounce = null;
+  }
+  if (immediate) {
+    updateQrCode(widget);
+    return;
+  }
+  widget.qr.debounce = setTimeout(() => {
+    updateQrCode(widget);
+  }, 250);
+}
+
+async function updateQrCode(widget) {
+  if (!widget?.qr) return;
+  const text = (widget.qr.text || "").trim();
+  if (!text) {
+    widget.qr.dataUrl = "";
+    return;
+  }
+  widget.qr.loading = true;
+  try {
+    const { toDataURL } = await loadQrLib();
+    widget.qr.dataUrl = await toDataURL(text, {
+      margin: 1,
+      width: 512,
+      color: {
+        dark: "#0f172a",
+        light: "#ffffff",
+      },
+    });
+    if (widget.qr.dataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        qrImageCache.set(widget.qr.dataUrl, img);
+      };
+      img.src = widget.qr.dataUrl;
+    }
+  } catch (err) {
+    console.warn("Failed to generate QR", err);
+  } finally {
+    widget.qr.loading = false;
+  }
+}
+
+function updateWidgetTimers(now = Date.now()) {
+  widgets.value.forEach((widget) => {
+    if (widget.type === "timer" && widget.timer?.running) {
+      const lastTick = widget.timer.lastTick || now;
+      const delta = now - lastTick;
+      if (delta > 0) {
+        widget.timer.remainingMs = Math.max(
+          0,
+          widget.timer.remainingMs - delta,
+        );
+        widget.timer.lastTick = now;
+        if (widget.timer.remainingMs <= 0) {
+          widget.timer.remainingMs = 0;
+          widget.timer.running = false;
+        }
+      }
+    }
+    if (widget.type === "stopwatch" && widget.stopwatch?.running) {
+      const lastTick = widget.stopwatch.lastTick || now;
+      const delta = now - lastTick;
+      if (delta > 0) {
+        widget.stopwatch.elapsedMs += delta;
+        widget.stopwatch.lastTick = now;
+      }
+    }
+  });
+}
+
+function startWidgetTicker() {
+  if (widgetTickInterval) clearInterval(widgetTickInterval);
+  widgetTickInterval = setInterval(() => {
+    clockNow.value = new Date();
+    updateWidgetTimers();
+  }, 250);
+}
+
+function stopWidgetTicker() {
+  if (!widgetTickInterval) return;
+  clearInterval(widgetTickInterval);
+  widgetTickInterval = null;
+}
+
+function onWidgetDragStart(widget, event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const bounds = getWidgetBounds();
+  widget.dragging = true;
+  activeWidgetId.value = widget.id;
+  widgetDragState = {
+    widget,
+    offsetX: event.clientX - bounds.left - widget.x,
+    offsetY: event.clientY - bounds.top - widget.y,
+    bounds,
+  };
+  window.addEventListener("pointermove", onWidgetDragMove);
+  window.addEventListener("pointerup", onWidgetDragEnd);
+}
+
+function onWidgetDragMove(event) {
+  if (!widgetDragState) return;
+  const { widget, offsetX, offsetY, bounds } = widgetDragState;
+  const nextX = event.clientX - bounds.left - offsetX;
+  const nextY = event.clientY - bounds.top - offsetY;
+  widget.x = nextX;
+  widget.y = nextY;
+  clampWidgetToStage(widget);
+}
+
+function onWidgetDragEnd() {
+  if (!widgetDragState) return;
+  widgetDragState.widget.dragging = false;
+  widgetDragState = null;
+  window.removeEventListener("pointermove", onWidgetDragMove);
+  window.removeEventListener("pointerup", onWidgetDragEnd);
+}
+
+function onWidgetResizeStart(widget, event) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const bounds = getWidgetBounds();
+  widget.resizing = true;
+  activeWidgetId.value = widget.id;
+  widgetResizeState = {
+    widget,
+    startX: event.clientX,
+    startY: event.clientY,
+    startW: widget.width,
+    startH: widget.height,
+    aspect: widget.aspect || widget.width / widget.height || 1,
+    bounds,
+  };
+  window.addEventListener("pointermove", onWidgetResizeMove);
+  window.addEventListener("pointerup", onWidgetResizeEnd);
+}
+
+function onWidgetResizeMove(event) {
+  if (!widgetResizeState) return;
+  const { widget, startX, startY, startW, startH, aspect, bounds } =
+    widgetResizeState;
+  const minW = widget.minWidth || WIDGET_MIN_WIDTH;
+  const minH = widget.minHeight || WIDGET_MIN_HEIGHT;
+  const dx = event.clientX - startX;
+  const dy = event.clientY - startY;
+  const useWidth = Math.abs(dx) >= Math.abs(dy);
+  let nextW = useWidth ? startW + dx : (startH + dy) * aspect;
+  let nextH = nextW / aspect;
+
+  if (nextW < minW) {
+    nextW = minW;
+    nextH = nextW / aspect;
+  }
+  if (nextH < minH) {
+    nextH = minH;
+    nextW = nextH * aspect;
+  }
+
+  if (bounds.width && bounds.height) {
+    const maxW = Math.max(40, bounds.width - widget.x);
+    const maxH = Math.max(40, bounds.height - widget.y);
+    if (nextW > maxW) {
+      nextW = maxW;
+      nextH = nextW / aspect;
+    }
+    if (nextH > maxH) {
+      nextH = maxH;
+      nextW = nextH * aspect;
+    }
+  }
+
+  widget.width = nextW;
+  widget.height = nextH;
+}
+
+function onWidgetResizeEnd() {
+  if (!widgetResizeState) return;
+  widgetResizeState.widget.resizing = false;
+  widgetResizeState = null;
+  window.removeEventListener("pointermove", onWidgetResizeMove);
+  window.removeEventListener("pointerup", onWidgetResizeEnd);
 }
 
 function triggerTemplateUpload() {
@@ -7084,6 +8000,7 @@ onMounted(async () => {
   await loadDevices();
   await loadRecordingDirHandle();
   loadLiveSettings();
+  startWidgetTicker();
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);
@@ -7108,6 +8025,7 @@ watch(routePath, (path) => {
     showSettingsPopover.value = false;
     showSlidesPanel.value = false;
     showPrestart.value = false;
+    showWidgetPopover.value = false;
   }
 });
 
@@ -7158,6 +8076,9 @@ onBeforeUnmount(() => {
   stopRecordingLoop();
   stopWebcamLoop();
   stopRecordingTimer();
+  stopWidgetTicker();
+  onWidgetDragEnd();
+  onWidgetResizeEnd();
   stopMicMeter();
   if (isLiveBroadcasting.value) {
     stopLiveBroadcast();
