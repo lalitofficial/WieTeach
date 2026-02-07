@@ -1701,7 +1701,10 @@
                       <button class="mini-btn" @click="pickRecordingFolder">
                         Choose folder
                       </button>
-                      <span class="recording-folder-status">
+                      <span
+                        class="recording-folder-status"
+                        :class="{ empty: !recordingDirHandle }"
+                      >
                         {{ recordingDirHandle ? "Folder set" : "No folder" }}
                       </span>
                     </div>

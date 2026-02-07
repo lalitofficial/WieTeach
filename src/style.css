@@ -2205,6 +2205,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
 }
 
 .recording-controls select {
@@ -2308,7 +2313,17 @@ body {
 
 .recording-folder-status {
   font-size: 11px;
-  color: #6b7280;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.recording-folder-status.empty {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .toast {
