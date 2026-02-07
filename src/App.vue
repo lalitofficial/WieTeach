@@ -26,6 +26,26 @@
             Recordings
           </button>
         </nav>
+        <button
+          v-if="isClassRoute"
+          class="icon-btn topbar-camera-btn"
+          :class="{ active: avControls.cameraEnabled }"
+          :title="avControls.cameraEnabled ? 'Stop camera' : 'Start camera'"
+          @click="toggleCamera"
+        >
+          <svg v-if="!avControls.cameraEnabled" viewBox="0 0 24 24">
+            <path
+              d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
+            />
+            <path d="M9 9l6 3-6 3V9z" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24">
+            <path
+              d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
+            />
+            <path d="M9 9h6v6H9z" />
+          </svg>
+        </button>
       </div>
       <div class="topbar-right">
         <input
