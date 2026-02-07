@@ -114,9 +114,13 @@ const server = http.createServer((req, res) => {
     req.on("end", async () => {
       try {
         const payload = body ? JSON.parse(body) : {};
-        const command = mapActionToCommand(payload.action);
+        const command =
+          payload.command || mapActionToCommand(payload.action || "");
         if (!command) {
-          writeJson(res, 400, { ok: false, error: "Unknown action" });
+          writeJson(res, 400, {
+            ok: false,
+            error: "Unknown action or command",
+          });
           return;
         }
         await sendCommand(command);

@@ -39,3 +39,11 @@ Then start the app as usual.
 Now **Start / Pause / Stop** in the app will also control Audacity.
 
 Note: the bridge uses `Record1stChoice` (Audacity’s scripting ID for Record).
+
+You can also send a raw command for testing:
+
+```bash
+curl -X POST http://127.0.0.1:7337/command \
+  -H "Content-Type: application/json" \
+  -d '{"command":"Record1stChoice"}'
+```
