@@ -38,7 +38,8 @@ VITE_AUDACITY_BRIDGE_URL=http://127.0.0.1:7337
 Then start the app as usual.  
 Now **Start / Pause / Stop** in the app will also control Audacity.
 
-Note: the bridge uses `Record1stChoice` (Audacity’s scripting ID for Record).
+Note: the bridge uses `Record1stChoice` (Audacity’s scripting ID for Record) and
+automatically appends the trailing `:` required by the script pipe.
 The bridge keeps the response pipe open so you don’t need to run `cat` manually.
 
 You can also send a raw command for testing:

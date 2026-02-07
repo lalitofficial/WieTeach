@@ -127,6 +127,15 @@ function mapActionToCommand(action) {
   }
 }
 
+function normalizeCommand(command) {
+  if (!command) return command;
+  const trimmed = command.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith("AUD-DO")) return trimmed;
+  if (trimmed.includes(":")) return trimmed;
+  return `${trimmed}:`;
+}
+
 function writeJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -171,8 +180,9 @@ const server = http.createServer((req, res) => {
     req.on("end", async () => {
       try {
         const payload = body ? JSON.parse(body) : {};
-        const command =
+        const commandRaw =
           payload.command || mapActionToCommand(payload.action || "");
+        const command = normalizeCommand(commandRaw);
         if (!command) {
           writeJson(res, 400, {
             ok: false,
