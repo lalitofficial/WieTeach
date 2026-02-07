@@ -182,7 +182,9 @@ const server = http.createServer((req, res) => {
         const payload = body ? JSON.parse(body) : {};
         const commandRaw =
           payload.command || mapActionToCommand(payload.action || "");
-        const command = normalizeCommand(commandRaw);
+        const command = payload.command
+          ? String(payload.command)
+          : normalizeCommand(commandRaw);
         if (!command) {
           writeJson(res, 400, {
             ok: false,
