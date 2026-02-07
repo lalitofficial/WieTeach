@@ -12,6 +12,7 @@ let pipeReader = null;
 let pipeReaderFd = null;
 let pipeReaderPath = null;
 let lastPipeMessage = "";
+let lastPipeTimestamp = 0;
 
 function candidatePipeDirs() {
   const dirs = [PIPE_DIR, "/private/tmp", "/System/Volumes/Data/private/tmp"];
@@ -74,6 +75,7 @@ function ensurePipeReader() {
   });
   pipeReader.on("data", (chunk) => {
     lastPipeMessage = String(chunk).trim();
+    lastPipeTimestamp = Date.now();
   });
   pipeReader.on("error", () => {});
 }
@@ -178,8 +180,21 @@ const server = http.createServer((req, res) => {
           });
           return;
         }
+        const beforeTimestamp = lastPipeTimestamp;
         await sendCommand(command);
-        writeJson(res, 200, { ok: true, command });
+        const response = await new Promise((resolve) => {
+          const timeout = setTimeout(() => resolve(null), 800);
+          const check = () => {
+            if (lastPipeTimestamp > beforeTimestamp) {
+              clearTimeout(timeout);
+              resolve(lastPipeMessage || null);
+              return;
+            }
+            setTimeout(check, 40);
+          };
+          check();
+        });
+        writeJson(res, 200, { ok: true, command, response });
       } catch (err) {
         writeJson(res, 500, { ok: false, error: String(err) });
       }
