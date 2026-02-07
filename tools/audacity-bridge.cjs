@@ -38,15 +38,24 @@ function getPipePaths() {
 
 function sendCommand(command) {
   const { to } = getPipePaths();
+  const writeDirect = (pipePath) => {
+    const fd = fs.openSync(pipePath, "w");
+    try {
+      fs.writeSync(fd, `${command}\n`);
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+
   return fs.promises.access(to, fs.constants.W_OK).then(
-    () => fs.promises.appendFile(to, `${command}\n`),
+    () => writeDirect(to),
     async () => {
       const candidates = candidatePipeDirs().map((dir) => buildPipePaths(dir));
       const found = candidates.find(
         (paths) => fs.existsSync(paths.to) && fs.existsSync(paths.from),
       );
       if (found && found.to !== to) {
-        await fs.promises.appendFile(found.to, `${command}\n`);
+        writeDirect(found.to);
         return;
       }
       throw new Error(
