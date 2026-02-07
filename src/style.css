@@ -282,16 +282,6 @@ body {
   stroke-width: 1.8;
 }
 
-.audacity-record-btn.active {
-  border-color: rgba(239, 68, 68, 0.6);
-  color: #dc2626;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
-}
-
-.audacity-record-btn.active svg {
-  fill: #dc2626;
-  stroke: #dc2626;
-}
 
 .recording-ctrls {
   display: inline-flex;

@@ -201,20 +201,6 @@
                 <span class="audacity-text">Audacity</span>
               </span>
               <button
-                v-if="audacityBridgeUrl"
-                class="mini-btn header-toggle audacity-record-btn"
-                :class="{ active: audacityRecording }"
-                :title="audacityRecording ? 'Stop Audacity' : 'Start Audacity'"
-                @click="toggleAudacityRecording"
-              >
-                <svg v-if="!audacityRecording" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="6" />
-                </svg>
-                <svg v-else viewBox="0 0 24 24">
-                  <rect x="7" y="7" width="10" height="10" rx="1.5" />
-                </svg>
-              </button>
-              <button
                 class="mini-btn header-toggle"
                 :class="{ active: recordingSaveToDisk }"
                 title="Save to disk"
@@ -1740,20 +1726,12 @@
                       Set VITE_AUDACITY_BRIDGE_URL
                     </span>
                   </div>
-                    <div class="recording-actions">
-                      <button class="pill-btn" @click="toggleRecordings">
-                        {{ isRecording ? "Stop" : "Start" }}
-                      </button>
-                      <button
-                        class="pill-btn ghost"
-                        :class="{ active: audacityRecording }"
-                        :disabled="!audacityBridgeUrl"
-                        @click="toggleAudacityRecording"
-                      >
-                        {{ audacityRecording ? "Stop Audacity" : "Start Audacity" }}
-                      </button>
-                    </div>
+                  <div class="recording-actions">
+                    <button class="pill-btn" @click="toggleRecordings">
+                      {{ isRecording ? "Stop" : "Start" }}
+                    </button>
                   </div>
+                </div>
                 <div class="settings-section">
                   <div class="settings-section-title">Live</div>
                   <div class="live-controls">
@@ -2185,7 +2163,6 @@ let widgetResizeState = null;
 const audacityBridgeUrl = import.meta.env.VITE_AUDACITY_BRIDGE_URL || "";
 const audacitySyncEnabled = ref(false);
 const audacityStatus = ref({ state: "off", text: "Sync off" });
-const audacityRecording = ref(false);
 let audacityHealthTimer = null;
 let audacitySyncWarned = false;
 const TIMER_RING_RADIUS = 44;
@@ -5384,9 +5361,7 @@ async function startRecording() {
     requestOverlay();
     startRecordingLoop();
     startRecordingTimer();
-    sendAudacityCommand("start").then((ok) => {
-      if (ok) audacityRecording.value = true;
-    });
+    sendAudacityCommand("start");
     if (webcam.enabled && webcam.chromaEnabled) startWebcamLoop();
     state.recorder = recorder;
     state.recordingStream = mixedStream;
@@ -5417,9 +5392,7 @@ function stopRecording() {
   stopRecordingLoop();
   stopRecordingTimer();
   stopMicMeter();
-  sendAudacityCommand("stop").then((ok) => {
-    if (ok) audacityRecording.value = false;
-  });
+  sendAudacityCommand("stop");
 }
 
 function downloadRecording(rec) {
@@ -6581,19 +6554,6 @@ async function sendAudacityCommand(action) {
   }
 }
 
-async function toggleAudacityRecording() {
-  if (!audacityBridgeUrl) {
-    showToast("Audacity bridge URL not set", "warn");
-    return;
-  }
-  const next = !audacityRecording.value;
-  const ok = await sendAudacityCommand({
-    command: next ? "Record1stChoice" : "Stop",
-  });
-  if (ok) {
-    audacityRecording.value = next;
-  }
-}
 
 function onWidgetDragStart(widget, event) {
   if (event.button !== 0) return;
@@ -8726,7 +8686,6 @@ watch(
     audacitySyncWarned = false;
     if (!enabled) {
       stopAudacityHealthTimer();
-      audacityRecording.value = false;
       setAudacityStatus(audacityBridgeUrl ? "off" : "missing", "Sync off");
       return;
     }
