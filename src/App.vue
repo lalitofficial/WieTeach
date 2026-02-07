@@ -191,6 +191,15 @@
               <span v-if="recordingSaveStatus" class="recording-save-status">
                 {{ recordingSaveStatus }}
               </span>
+              <span
+                v-if="audacityBridgeUrl"
+                class="audacity-status-pill"
+                :class="audacityStatus.state"
+                :title="`Audacity: ${audacityStatus.text}`"
+              >
+                <span class="audacity-dot"></span>
+                <span class="audacity-text">Audacity</span>
+              </span>
               <button
                 class="mini-btn header-toggle"
                 :class="{ active: recordingSaveToDisk }"
@@ -1697,6 +1706,26 @@
                       </span>
                     </div>
                   </div>
+                  <div class="recording-controls">
+                    <label class="toggle">
+                      <input
+                        type="checkbox"
+                        v-model="audacitySyncEnabled"
+                        :disabled="!audacityBridgeUrl"
+                      />
+                      <span>Audacity sync</span>
+                    </label>
+                    <span
+                      v-if="audacityBridgeUrl"
+                      class="audacity-status-text"
+                      :class="audacityStatus.state"
+                    >
+                      {{ audacityStatus.text }}
+                    </span>
+                    <span v-else class="audacity-status-text missing">
+                      Set VITE_AUDACITY_BRIDGE_URL
+                    </span>
+                  </div>
                   <div class="recording-actions">
                     <button class="pill-btn" @click="toggleRecordings">
                       {{ isRecording ? "Stop" : "Start" }}
@@ -2132,7 +2161,9 @@ let widgetTickInterval = null;
 let widgetDragState = null;
 let widgetResizeState = null;
 const audacityBridgeUrl = import.meta.env.VITE_AUDACITY_BRIDGE_URL || "";
-const audacitySyncEnabled = ref(!!audacityBridgeUrl);
+const audacitySyncEnabled = ref(false);
+const audacityStatus = ref({ state: "off", text: "Sync off" });
+let audacityHealthTimer = null;
 let audacitySyncWarned = false;
 const TIMER_RING_RADIUS = 44;
 const timerRingCircumference = 2 * Math.PI * TIMER_RING_RADIUS;
@@ -6463,6 +6494,44 @@ function updateWidgetTickerState() {
   if (!widgetTickInterval) startWidgetTicker();
 }
 
+function setAudacityStatus(state, text) {
+  audacityStatus.value = { state, text };
+}
+
+async function checkAudacityHealth() {
+  if (!audacityBridgeUrl) {
+    setAudacityStatus("missing", "Bridge not set");
+    return;
+  }
+  if (!audacitySyncEnabled.value) {
+    setAudacityStatus("off", "Sync off");
+    return;
+  }
+  try {
+    const res = await fetch(`${audacityBridgeUrl}/health`);
+    const data = await res.json();
+    if (data?.ok && data?.toExists && data?.fromExists) {
+      setAudacityStatus("connected", "Connected");
+    } else {
+      setAudacityStatus("error", "Pipes missing");
+    }
+  } catch {
+    setAudacityStatus("error", "Disconnected");
+  }
+}
+
+function startAudacityHealthTimer() {
+  if (audacityHealthTimer) clearInterval(audacityHealthTimer);
+  audacityHealthTimer = setInterval(checkAudacityHealth, 3000);
+  checkAudacityHealth();
+}
+
+function stopAudacityHealthTimer() {
+  if (!audacityHealthTimer) return;
+  clearInterval(audacityHealthTimer);
+  audacityHealthTimer = null;
+}
+
 async function sendAudacityCommand(action) {
   if (!audacitySyncEnabled.value || !audacityBridgeUrl) return;
   try {
@@ -8569,6 +8638,17 @@ onMounted(async () => {
   await loadRecordingDirHandle();
   loadLiveSettings();
   updateWidgetTickerState();
+  const savedAudacity = localStorage.getItem("audacitySyncEnabled");
+  if (savedAudacity !== null) {
+    audacitySyncEnabled.value = savedAudacity === "true";
+  } else {
+    audacitySyncEnabled.value = !!audacityBridgeUrl;
+  }
+  if (audacitySyncEnabled.value) {
+    startAudacityHealthTimer();
+  } else {
+    checkAudacityHealth();
+  }
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);
@@ -8590,6 +8670,20 @@ watch(
     }
   },
   { immediate: true },
+);
+
+watch(
+  () => audacitySyncEnabled.value,
+  (enabled) => {
+    localStorage.setItem("audacitySyncEnabled", String(enabled));
+    audacitySyncWarned = false;
+    if (!enabled) {
+      stopAudacityHealthTimer();
+      setAudacityStatus(audacityBridgeUrl ? "off" : "missing", "Sync off");
+      return;
+    }
+    startAudacityHealthTimer();
+  },
 );
 
 watch(routePath, (path) => {
