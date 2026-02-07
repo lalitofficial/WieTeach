@@ -61,7 +61,7 @@ function sendCommand(command) {
 function mapActionToCommand(action) {
   switch (action) {
     case "start":
-      return "Record";
+      return "Record1stChoice";
     case "stop":
       return "Stop";
     case "pause":
