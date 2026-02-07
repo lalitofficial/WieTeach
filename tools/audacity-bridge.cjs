@@ -9,23 +9,53 @@ const PIPE_DIR = process.env.AUDACITY_PIPE_DIR || "/tmp";
 const PIPE_TO = process.env.AUDACITY_PIPE_TO || "";
 const PIPE_FROM = process.env.AUDACITY_PIPE_FROM || "";
 
+function candidatePipeDirs() {
+  const dirs = [PIPE_DIR, "/private/tmp", "/System/Volumes/Data/private/tmp"];
+  return Array.from(new Set(dirs.filter(Boolean)));
+}
+
+function buildPipePaths(dir) {
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  const suffix = uid != null ? `.${uid}` : "";
+  return {
+    to: path.join(dir, `audacity_script_pipe.to${suffix}`),
+    from: path.join(dir, `audacity_script_pipe.from${suffix}`),
+  };
+}
+
 function getPipePaths() {
   if (PIPE_TO && PIPE_FROM) {
     return { to: PIPE_TO, from: PIPE_FROM };
   }
-  const uid = typeof process.getuid === "function" ? process.getuid() : null;
-  const suffix = uid != null ? `.${uid}` : "";
-  return {
-    to: path.join(PIPE_DIR, `audacity_script_pipe.to${suffix}`),
-    from: path.join(PIPE_DIR, `audacity_script_pipe.from${suffix}`),
-  };
+  for (const dir of candidatePipeDirs()) {
+    const paths = buildPipePaths(dir);
+    if (fs.existsSync(paths.to) && fs.existsSync(paths.from)) {
+      return paths;
+    }
+  }
+  return buildPipePaths(PIPE_DIR);
 }
 
 function sendCommand(command) {
   const { to } = getPipePaths();
-  return fs.promises
-    .access(to, fs.constants.W_OK)
-    .then(() => fs.promises.appendFile(to, `${command}\n`));
+  return fs.promises.access(to, fs.constants.W_OK).then(
+    () => fs.promises.appendFile(to, `${command}\n`),
+    async () => {
+      const candidates = candidatePipeDirs().map((dir) => buildPipePaths(dir));
+      const found = candidates.find(
+        (paths) => fs.existsSync(paths.to) && fs.existsSync(paths.from),
+      );
+      if (found && found.to !== to) {
+        await fs.promises.appendFile(found.to, `${command}\n`);
+        return;
+      }
+      throw new Error(
+        `Audacity pipe not found. Checked: ${candidates
+          .map((p) => p.to)
+          .join(", ")}`,
+      );
+    },
+  );
 }
 
 function mapActionToCommand(action) {
@@ -66,7 +96,13 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "GET" && req.url === "/health") {
     const { to, from } = getPipePaths();
-    writeJson(res, 200, { ok: true, to, from });
+    writeJson(res, 200, {
+      ok: true,
+      to,
+      from,
+      toExists: fs.existsSync(to),
+      fromExists: fs.existsSync(from),
+    });
     return;
   }
 

@@ -9,8 +9,8 @@ using the `mod-script-pipe` feature.
 3. Find **mod-script-pipe** and set it to **Enabled**.
 4. Restart Audacity.
 
-When enabled, Audacity creates two pipes:
-- `/tmp/audacity_script_pipe.to.<uid>`
+When enabled, Audacity creates two pipes (macOS):
+- `/tmp/audacity_script_pipe.to.<uid>` (symlinked to `/private/tmp/...`)
 - `/tmp/audacity_script_pipe.from.<uid>`
 
 On macOS, `<uid>` is your user id (e.g. `501`).
@@ -25,7 +25,7 @@ node tools/audacity-bridge.cjs
 Optional overrides:
 - `AUDACITY_BRIDGE_PORT` (default `7337`)
 - `AUDACITY_BRIDGE_HOST` (default `127.0.0.1`)
-- `AUDACITY_PIPE_DIR` (default `/tmp`)
+- `AUDACITY_PIPE_DIR` (default `/tmp`, macOS real path `/private/tmp`)
 - `AUDACITY_PIPE_TO` / `AUDACITY_PIPE_FROM` (full paths if Audacity uses custom paths)
 
 ## 3) Tell the app where the bridge is
