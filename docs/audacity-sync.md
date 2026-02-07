@@ -39,6 +39,7 @@ Then start the app as usual.
 Now **Start / Pause / Stop** in the app will also control Audacity.
 
 Note: the bridge uses `Record1stChoice` (Audacity’s scripting ID for Record).
+The bridge keeps the response pipe open so you don’t need to run `cat` manually.
 
 You can also send a raw command for testing:
 

@@ -8,6 +8,10 @@ const HOST = process.env.AUDACITY_BRIDGE_HOST || "127.0.0.1";
 const PIPE_DIR = process.env.AUDACITY_PIPE_DIR || "/tmp";
 const PIPE_TO = process.env.AUDACITY_PIPE_TO || "";
 const PIPE_FROM = process.env.AUDACITY_PIPE_FROM || "";
+let pipeReader = null;
+let pipeReaderFd = null;
+let pipeReaderPath = null;
+let lastPipeMessage = "";
 
 function candidatePipeDirs() {
   const dirs = [PIPE_DIR, "/private/tmp", "/System/Volumes/Data/private/tmp"];
@@ -36,8 +40,47 @@ function getPipePaths() {
   return buildPipePaths(PIPE_DIR);
 }
 
+function ensurePipeReader() {
+  const { from } = getPipePaths();
+  if (pipeReader && pipeReaderPath === from) {
+    return;
+  }
+  if (pipeReader) {
+    pipeReader.destroy();
+    pipeReader = null;
+  }
+  if (pipeReaderFd !== null) {
+    try {
+      fs.closeSync(pipeReaderFd);
+    } catch {}
+    pipeReaderFd = null;
+  }
+  try {
+    pipeReaderFd = fs.openSync(from, "r+");
+  } catch (err) {
+    try {
+      pipeReaderFd = fs.openSync(from, "r");
+    } catch {
+      pipeReaderFd = null;
+      pipeReaderPath = null;
+      return;
+    }
+  }
+  pipeReaderPath = from;
+  pipeReader = fs.createReadStream(null, {
+    fd: pipeReaderFd,
+    encoding: "utf8",
+    autoClose: false,
+  });
+  pipeReader.on("data", (chunk) => {
+    lastPipeMessage = String(chunk).trim();
+  });
+  pipeReader.on("error", () => {});
+}
+
 function sendCommand(command) {
   const { to } = getPipePaths();
+  ensurePipeReader();
   const writeDirect = (pipePath) => {
     const fd = fs.openSync(pipePath, "w");
     try {
@@ -111,6 +154,9 @@ const server = http.createServer((req, res) => {
       from,
       toExists: fs.existsSync(to),
       fromExists: fs.existsSync(from),
+      readerOpen: !!pipeReaderFd,
+      readerPath: pipeReaderPath,
+      lastMessage: lastPipeMessage || null,
     });
     return;
   }
@@ -145,5 +191,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  ensurePipeReader();
   console.log(`Audacity bridge listening on http://${HOST}:${PORT}`);
 });
