@@ -2468,6 +2468,11 @@ body {
   cursor: grab;
 }
 
+.webcam-preview.paused video,
+.webcam-preview.paused .webcam-canvas {
+  opacity: 0;
+}
+
 .webcam-preview video {
   display: block;
   width: 100%;

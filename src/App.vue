@@ -767,7 +767,11 @@
           <div
             v-if="webcam.enabled"
             class="webcam-preview"
-            :class="{ flipped: webcam.flip, locked: webcam.locked }"
+            :class="{
+              flipped: webcam.flip,
+              locked: webcam.locked,
+              paused: camPaused,
+            }"
             :style="{
               left: `${webcam.x}px`,
               top: `${webcam.y}px`,
@@ -4138,7 +4142,7 @@ function drawChromaToCanvas(videoEl, canvasEl, ctx) {
 }
 
 function drawWebcamLayer(ctx) {
-  if (!webcam.enabled || !webcamVideo.value) return;
+  if (!webcam.enabled || !webcamVideo.value || camPaused.value) return;
   if (webcam.chromaEnabled && webcamCanvas.value) {
     ctx.save();
     if (webcam.flip) {
@@ -4184,7 +4188,7 @@ function drawWebcamLayerComposite(
   offsetY,
   ratio,
 ) {
-  if (!webcam.enabled) return;
+  if (!webcam.enabled || camPaused.value) return;
 
   const src =
     webcam.chromaEnabled && webcamCanvas.value
