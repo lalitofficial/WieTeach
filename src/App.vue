@@ -28,22 +28,20 @@
         </nav>
         <button
           v-if="isClassRoute"
-          class="icon-btn topbar-camera-btn"
-          :class="{ active: avControls.cameraEnabled }"
-          :title="avControls.cameraEnabled ? 'Stop camera' : 'Start camera'"
-          @click="toggleCamera"
+          class="icon-btn topbar-lock-btn"
+          :class="{ active: webcam.locked }"
+          :disabled="!webcam.enabled"
+          :title="webcam.locked ? 'Unlock camera' : 'Lock camera'"
+          @click="webcam.locked = !webcam.locked"
         >
-          <svg v-if="!avControls.cameraEnabled" viewBox="0 0 24 24">
-            <path
-              d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
-            />
-            <path d="M9 9l6 3-6 3V9z" />
+          <svg v-if="webcam.locked" viewBox="0 0 24 24">
+            <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+            <rect x="5" y="11" width="14" height="9" rx="2" />
           </svg>
           <svg v-else viewBox="0 0 24 24">
-            <path
-              d="M5 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm12 2l4-2v12l-4-2V8z"
-            />
-            <path d="M9 9h6v6H9z" />
+            <path d="M7 11V8a5 5 0 0 1 10 0" />
+            <rect x="5" y="11" width="14" height="9" rx="2" />
+            <path d="M17 11V8" />
           </svg>
         </button>
       </div>
@@ -576,10 +574,12 @@
                 v-for="widget in widgets"
                 :key="widget.id"
                 class="widget-shell"
+                :ref="(el) => setWidgetDomRef(widget.id, el)"
                 :class="{
                   active: widget.id === activeWidgetId,
                   dragging: widget.dragging,
                   resizing: widget.resizing,
+                  'audience-hidden': !widget.showForUsers,
                 }"
                 :style="getWidgetStyle(widget)"
               >
@@ -589,17 +589,47 @@
                     @pointerdown.stop="onWidgetDragStart(widget, $event)"
                   >
                     <span class="widget-title">
-                      {{ widget.type === "clock" ? "Clock" : "Timer" }}
+                      {{ getWidgetTitle(widget) }}
                     </span>
-                    <button
-                      class="widget-icon-btn"
-                      title="Remove widget"
-                      @click.stop="removeWidget(widget.id)"
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M6 6l12 12M6 18L18 6" />
-                      </svg>
-                    </button>
+                    <div class="widget-header-actions">
+                      <span
+                        v-if="!widget.showForUsers"
+                        class="widget-hidden-pill"
+                      >
+                        Hidden
+                      </span>
+                      <button
+                        class="widget-icon-btn"
+                        :class="{ active: widget.showForUsers }"
+                        :title="
+                          widget.showForUsers
+                            ? 'Hide from students'
+                            : 'Show to students'
+                        "
+                        @click.stop="toggleWidgetAudience(widget)"
+                      >
+                        <svg v-if="widget.showForUsers" viewBox="0 0 24 24">
+                          <path
+                            d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z"
+                          />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24">
+                          <path d="M3 5l16 16M2 12s4-6 10-6c2 0 4 1 6 2" />
+                          <path d="M22 12s-4 6-10 6c-2 0-4-1-6-2" />
+                          <path d="M9.5 9.5A3 3 0 0 0 12 15" />
+                        </svg>
+                      </button>
+                      <button
+                        class="widget-icon-btn"
+                        title="Remove widget"
+                        @click.stop="removeWidget(widget.id)"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6 6l12 12M6 18L18 6" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div
                     v-if="widget.type === 'clock'"
@@ -619,7 +649,10 @@
                       </div>
                     </div>
                   </div>
-                  <div v-else-if="widget.type === 'timer'" class="widget-body">
+                  <div
+                    v-else-if="widget.type === 'timer'"
+                    class="widget-body edge-controls"
+                  >
                     <div class="widget-timer-display">
                       <svg class="widget-timer-ring" viewBox="0 0 120 120">
                         <circle class="ring-track" cx="60" cy="60" r="44" />
@@ -676,16 +709,17 @@
                       />
                     </div>
                   </div>
-                  <div v-else-if="widget.type === 'qr'" class="widget-body">
+                  <div
+                    v-else-if="widget.type === 'qr'"
+                    class="widget-body widget-qr-body"
+                  >
                     <div class="widget-qr-preview">
                       <img
                         v-if="widget.qr.dataUrl"
                         :src="widget.qr.dataUrl"
                         alt="QR code"
                       />
-                      <div v-else class="widget-qr-placeholder">
-                        QR
-                      </div>
+                      <div v-else class="widget-qr-placeholder">QR</div>
                     </div>
                     <input
                       class="widget-qr-input"
@@ -696,7 +730,10 @@
                       title="QR text"
                     />
                   </div>
-                  <div v-else class="widget-body widget-stopwatch-body">
+                  <div
+                    v-else
+                    class="widget-body widget-stopwatch-body edge-controls"
+                  >
                     <div class="widget-stopwatch-main">
                       {{ formatStopwatch(widget.stopwatch.elapsedMs) }}
                     </div>
@@ -738,14 +775,27 @@
                         </svg>
                       </button>
                     </div>
-                    <div v-if="widget.stopwatch.laps.length" class="widget-laps">
+                    <div
+                      v-if="widget.stopwatch.laps.length"
+                      class="widget-laps"
+                    >
                       <div
-                        v-for="lap in widget.stopwatch.laps.slice(-3).reverse()"
-                        :key="lap.label"
+                        v-for="(lap, idx) in widget.stopwatch.laps"
+                        :key="`${lap.label}-${idx}`"
                         class="widget-lap-row"
+                        :class="{
+                          latest: idx === widget.stopwatch.laps.length - 1,
+                        }"
                       >
-                        <span>{{ lap.label }}</span>
-                        <span>{{ formatStopwatch(lap.timeMs) }}</span>
+                        <span class="lap-label">{{ lap.label }}</span>
+                        <span class="lap-times">
+                          <span class="lap-total">
+                            {{ formatStopwatch(lap.totalMs) }}
+                          </span>
+                          <span class="lap-split">
+                            +{{ formatStopwatch(lap.lapMs) }}
+                          </span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -793,6 +843,27 @@
               ref="webcamCanvas"
               class="webcam-canvas"
             ></canvas>
+            <div
+              class="webcam-controls left"
+              :style="{ pointerEvents: 'auto' }"
+            >
+              <button
+                class="mini-btn"
+                :class="{ active: webcam.locked }"
+                @click.stop="webcam.locked = !webcam.locked"
+                :title="webcam.locked ? 'Unlock position' : 'Lock position'"
+              >
+                <svg v-if="webcam.locked" viewBox="0 0 24 24">
+                  <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                </svg>
+                <svg v-else viewBox="0 0 24 24">
+                  <path d="M7 11V8a5 5 0 0 1 10 0" />
+                  <rect x="5" y="11" width="14" height="9" rx="2" />
+                  <path d="M17 11V8" />
+                </svg>
+              </button>
+            </div>
             <div class="webcam-controls" :style="{ pointerEvents: 'auto' }">
               <button
                 class="mini-btn"
@@ -2066,6 +2137,8 @@ const WIDGET_MIN_WIDTH = 180;
 const WIDGET_MIN_HEIGHT = 110;
 let qrLibPromise = null;
 const qrImageCache = new Map();
+const widgetDomRefs = new Map();
+const widgetSnapshotCache = new Map();
 const toast = reactive({
   visible: false,
   message: "",
@@ -2149,6 +2222,7 @@ let micMeter = null;
 let micMeterInterval = null;
 let livePreviewWindow = null;
 let livePreviewRaf = null;
+const isPreviewingRecording = ref(false);
 const showPrestart = ref(false);
 const RECORD_MAX_WIDTH = 2560;
 const RECORD_MAX_HEIGHT = 1440;
@@ -3938,6 +4012,38 @@ function drawRoundedRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+function truncateText(ctx, text, maxWidth) {
+  if (!text) return "";
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidate = `${text.slice(0, mid)}…`;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  const safe = Math.max(0, low - 1);
+  return `${text.slice(0, safe)}…`;
+}
+
+function fitTextSize(ctx, text, baseSize, maxWidth, maxHeight) {
+  if (!text) return baseSize;
+  const safeW = Math.max(1, maxWidth);
+  const safeH = Math.max(1, maxHeight);
+  ctx.font = `600 ${baseSize}px "Space Grotesk", sans-serif`;
+  const metrics = ctx.measureText(text);
+  const textW = metrics.width || 1;
+  const textH =
+    (metrics.actualBoundingBoxAscent || baseSize) +
+    (metrics.actualBoundingBoxDescent || 0);
+  const scale = Math.min(1, safeW / textW, safeH / textH);
+  return Math.max(1, baseSize * scale);
+}
+
 function isStreamActive(stream) {
   if (!stream) return false;
   const tracks = stream.getVideoTracks();
@@ -4237,15 +4343,110 @@ function drawWebcamLayerComposite(
   ctx.restore();
 }
 
+function setWidgetDomRef(id, el) {
+  if (!id) return;
+  if (el) {
+    widgetDomRefs.set(id, el);
+  } else {
+    widgetDomRefs.delete(id);
+  }
+}
+
+function cloneNodeWithInlineStyles(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return document.createTextNode(node.textContent || "");
+  }
+  if (!(node instanceof Element)) {
+    return node.cloneNode(false);
+  }
+  const clone = node.cloneNode(false);
+  const computed = window.getComputedStyle(node);
+  let cssText = "";
+  for (const prop of computed) {
+    cssText += `${prop}:${computed.getPropertyValue(prop)};`;
+  }
+  if (cssText) {
+    clone.setAttribute("style", cssText);
+  }
+  node.childNodes.forEach((child) => {
+    clone.appendChild(cloneNodeWithInlineStyles(child));
+  });
+  return clone;
+}
+
+async function renderElementToImage(element, width, height) {
+  const cloned = cloneNodeWithInlineStyles(element);
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  wrapper.style.width = `${width}px`;
+  wrapper.style.height = `${height}px`;
+  wrapper.appendChild(cloned);
+
+  const serializer = new XMLSerializer();
+  const html = serializer.serializeToString(wrapper);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><foreignObject width="100%" height="100%">${html}</foreignObject></svg>`;
+  const img = new Image();
+  img.decoding = "async";
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await img.decode();
+  return img;
+}
+
+function getStopwatchSnapshotKey(widget) {
+  const elapsedKey = Math.floor((widget.stopwatch?.elapsedMs || 0) / 100);
+  const lapKey = (widget.stopwatch?.laps || [])
+    .map((lap) => `${lap.label}:${lap.totalMs}:${lap.lapMs}`)
+    .join("|");
+  return `${widget.width}x${widget.height}:${elapsedKey}:${lapKey}`;
+}
+
+function getStopwatchSnapshot(widget) {
+  const wrapper = widgetDomRefs.get(widget.id);
+  if (!wrapper) return null;
+  const card = wrapper.querySelector(".widget-card");
+  if (!card) return null;
+  const cacheKey = getStopwatchSnapshotKey(widget);
+  let cache = widgetSnapshotCache.get(widget.id);
+  if (!cache) {
+    cache = { key: null, img: null, pending: false, lastRender: 0 };
+    widgetSnapshotCache.set(widget.id, cache);
+  }
+  const now = performance.now();
+  if (
+    cache.key !== cacheKey &&
+    !cache.pending &&
+    now - cache.lastRender > 80
+  ) {
+    cache.pending = true;
+    renderElementToImage(card, widget.width, widget.height)
+      .then((img) => {
+        cache.img = img;
+        cache.key = cacheKey;
+        cache.lastRender = performance.now();
+      })
+      .catch(() => {})
+      .finally(() => {
+        cache.pending = false;
+      });
+  }
+  return cache.img;
+}
+
 function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
   if (!widgets.value.length) return;
+  if (
+    !isLiveBroadcasting.value &&
+    !isRecording.value &&
+    !isPreviewingRecording.value
+  ) {
+    return;
+  }
+  const audienceWidgets = widgets.value.filter((w) => w.showForUsers);
+  if (!audienceWidgets.length) return;
   const clockParts = getClockParts(clockNow.value);
   const scaleFactor = Math.min(scaleX, scaleY);
-  const padding = 10 * ratio * scaleFactor;
-  const labelSize = Math.max(9, 10 * ratio * scaleFactor);
-  const timeSize = Math.max(16, 30 * ratio * scaleFactor);
 
-  widgets.value.forEach((widget) => {
+  audienceWidgets.forEach((widget) => {
     const physicalX = widget.x * ratio;
     const physicalY = widget.y * ratio;
     const physicalWidth = widget.width * ratio;
@@ -4254,6 +4455,35 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
     const h = physicalHeight * scaleY;
     const x = offsetX + physicalX * scaleX;
     const y = offsetY + physicalY * scaleY;
+    if (widget.type === "stopwatch") {
+      const snapshot = getStopwatchSnapshot(widget);
+      if (snapshot) {
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(snapshot, x, y, w, h);
+        ctx.restore();
+        return;
+      }
+    }
+    const cssScale = Math.min(
+      w / Math.max(1, widget.width),
+      h / Math.max(1, widget.height),
+    );
+    const cssBase = Math.max(1, Math.min(widget.width, widget.height));
+    const stopwatchBase =
+      widget.type === "stopwatch"
+        ? Math.max(1, Math.min(widget.width, widget.height + 100))
+        : cssBase;
+    const paddingX = 12 * cssScale;
+    const paddingY = 10 * cssScale;
+    const cardGap = 10 * cssScale;
+    const bodyGap = 8 * cssScale;
+    const stopwatchGap = -132 * cssScale;
+    const labelSize = Math.max(10, Math.min(12, cssBase * 0.07)) * cssScale;
+    const labelLine = labelSize * 1.2;
+    const timeScale = widget.type === "stopwatch" ? 0.28 : 0.32;
+    const timeMin = widget.type === "stopwatch" ? 16 : 18;
+    const timeSize = Math.max(timeMin, stopwatchBase * timeScale) * cssScale;
 
     ctx.save();
     ctx.globalAlpha = 0.95;
@@ -4277,27 +4507,65 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
             ? "STOPWATCH"
             : "QR CODE";
 
-    ctx.fillStyle = "rgba(226, 232, 240, 0.8)";
-    ctx.font = `${labelSize}px "Space Grotesk", sans-serif`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, x + padding, y + padding);
+    const showHeader = widget.type !== "stopwatch";
+    if (showHeader) {
+      ctx.fillStyle = "rgba(226, 232, 240, 0.8)";
+      ctx.font = `${labelSize}px "Space Grotesk", sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(label, x + paddingX, y + paddingY);
+    }
+
+    const headerOffset = showHeader ? labelLine + cardGap : 0;
+    const bodyTop = y + paddingY + headerOffset;
+    const bodyHeight = Math.max(0, h - bodyTop - paddingY);
+    const bodyWidth = Math.max(0, w - paddingX * 2);
+    const edgeControlHeight = 0;
+    const usableBodyHeight = bodyHeight;
+    const bodyCenterY = bodyTop + bodyHeight * 0.5;
+
+    // No action icons in recording/live composite
 
     if (widget.type === "qr") {
+      const qrLayout = getQrLayoutMetrics(
+        widget.width,
+        widget.height,
+        cssScale,
+      );
+
       const img = widget.qr?.dataUrl
         ? qrImageCache.get(widget.qr.dataUrl)
         : null;
       if (img && img.complete) {
-        const size = Math.min(w, h) - padding * 2.2;
+        const size = Math.max(8 * ratio * scaleFactor, qrLayout.previewSize);
+        if (size <= 0) {
+          ctx.restore();
+          return;
+        }
         const ix = x + (w - size) / 2;
-        const iy = y + (h - size) / 2 + padding * 0.6;
+        const iy = y + qrLayout.previewTop;
         ctx.fillStyle = "#ffffff";
         ctx.save();
-        drawRoundedRectPath(ctx, ix, iy, size, size, 10 * ratio * scaleFactor);
+        drawRoundedRectPath(ctx, ix, iy, size, size, 12 * cssScale);
         ctx.fill();
         ctx.clip();
-        ctx.drawImage(img, ix, iy, size, size);
+        const inset = 8 * cssScale;
+        ctx.drawImage(
+          img,
+          ix + inset,
+          iy + inset,
+          Math.max(0, size - inset * 2),
+          Math.max(0, size - inset * 2),
+        );
         ctx.restore();
+      }
+      if (widget.qr?.text) {
+        ctx.fillStyle = "rgba(226, 232, 240, 0.75)";
+        ctx.font = `${qrLayout.inputFont}px "Space Grotesk", sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const text = truncateText(ctx, widget.qr.text, qrLayout.bodyWidth);
+        ctx.fillText(text, x + w / 2, y + qrLayout.inputCenterY);
       }
       ctx.restore();
       return;
@@ -4307,7 +4575,6 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
     ctx.font = `600 ${timeSize}px "Space Grotesk", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const centerY = y + h * 0.6;
     const mainText =
       widget.type === "clock"
         ? clockParts.main
@@ -4316,12 +4583,23 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
           : formatStopwatch(widget.stopwatch.elapsedMs);
 
     if (widget.type === "timer") {
-      const ringRadius = Math.min(w, h) * 0.28;
+      const inputFont = Math.max(11, Math.min(14, cssBase * 0.1)) * cssScale;
+      const inputHeight = inputFont * 1.2 + 12 * cssScale;
+      const controlsHeight = Math.max(30 * cssScale, inputHeight);
+      const displayHeight = Math.max(0, usableBodyHeight);
+      const displayCenterY = bodyTop + displayHeight * 0.5;
+      const ringLimit = cssBase * 0.78 * cssScale;
+      const ringSize = Math.min(bodyWidth, displayHeight, ringLimit);
+      const ringRadius = ringSize / 2;
       ctx.save();
-      ctx.translate(x + w / 2, centerY);
+      ctx.translate(x + w / 2, displayCenterY);
       ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+      ctx.beginPath();
+      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+      ctx.fill();
       ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
-      ctx.lineWidth = Math.max(1.2, ringRadius * 0.12);
+      ctx.lineWidth = 8 * cssScale;
       ctx.beginPath();
       ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
       ctx.stroke();
@@ -4333,11 +4611,171 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
       ctx.restore();
     }
 
-    ctx.fillText(mainText, x + w / 2, centerY);
+    let textY = bodyCenterY;
+    let stopwatchLayout = null;
+    if (widget.type === "timer") {
+      const inputFont = Math.max(11, Math.min(14, cssBase * 0.1)) * cssScale;
+      const inputHeight = inputFont * 1.2 + 12 * cssScale;
+      const controlsHeight = Math.max(30 * cssScale, inputHeight);
+      const displayHeight = Math.max(0, usableBodyHeight);
+      textY = bodyTop + displayHeight * 0.5;
+    } else if (widget.type === "stopwatch") {
+      const mainHeight = timeSize - 12 * cssScale;
+      const lapsFont = Math.max(10, Math.min(12, cssBase * 0.07)) * cssScale;
+      const lapRowHeight = lapsFont + 12 * cssScale;
+      const lapsGap = 4 * cssScale;
+      const lapCount = widget.stopwatch?.laps?.length || 0;
+      const lapsHeight =
+        lapCount > 0
+          ? Math.min(
+              160 * cssScale,
+              lapCount * lapRowHeight + Math.max(0, lapCount - 1) * lapsGap,
+            )
+          : 0;
+      const groupGap = stopwatchGap;
+      const groupHeight =
+        mainHeight + (lapCount > 0 ? lapsHeight + groupGap : 0);
+      const groupTop =
+        bodyTop + Math.max(0, (usableBodyHeight - groupHeight) / 2);
+      textY = groupTop + mainHeight / 2;
+      stopwatchLayout = {
+        lapCount,
+        lapsFont,
+        lapRowHeight,
+        lapsGap,
+        lapsHeight,
+        groupGap,
+        groupTop,
+        mainHeight,
+        rowX: x + paddingX,
+        rowWidth: bodyWidth,
+      };
+    }
+    ctx.fillText(mainText, x + w / 2, textY);
+
+    if (
+      widget.type === "stopwatch" &&
+      stopwatchLayout &&
+      stopwatchLayout.lapCount > 0
+    ) {
+      const {
+        lapCount,
+        lapsFont,
+        lapRowHeight,
+        lapsGap,
+        lapsHeight,
+        groupGap,
+        groupTop,
+        mainHeight,
+        rowX,
+        rowWidth,
+      } = stopwatchLayout;
+      const availableRows = Math.max(
+        1,
+        Math.floor((lapsHeight + lapsGap) / (lapRowHeight + lapsGap)),
+      );
+      const startIndex = Math.max(0, lapCount - availableRows);
+      const lapsToShow = widget.stopwatch.laps.slice(startIndex);
+      const lapsTop = groupTop + mainHeight + groupGap;
+      const rowRadius = 12 * cssScale;
+      const rowPaddingX = 10 * cssScale;
+      const rowPaddingY = 6 * cssScale;
+      const labelPaddingX = 6 * cssScale;
+      const labelPaddingY = 2 * cssScale;
+      const splitPaddingX = 6 * cssScale;
+      const splitPaddingY = 2 * cssScale;
+      const timesGap = 10 * cssScale;
+
+      lapsToShow.forEach((lap, index) => {
+        const rowY = lapsTop + index * (lapRowHeight + lapsGap);
+        const isLatest = startIndex + index === lapCount - 1;
+        ctx.save();
+        drawRoundedRectPath(ctx, rowX, rowY, rowWidth, lapRowHeight, rowRadius);
+        ctx.fillStyle = isLatest
+          ? "rgba(15, 23, 42, 0.5)"
+          : "rgba(15, 23, 42, 0.35)";
+        ctx.fill();
+        ctx.strokeStyle = isLatest
+          ? "rgba(56, 189, 248, 0.25)"
+          : "rgba(255, 255, 255, 0.08)";
+        ctx.lineWidth = Math.max(1, 1.1 * ratio * scaleFactor);
+        ctx.stroke();
+
+        const labelText = lap.label || "";
+        ctx.font = `600 ${lapsFont}px "Space Grotesk", sans-serif`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        const labelWidth = ctx.measureText(labelText).width + labelPaddingX * 2;
+        const labelHeight = lapsFont + labelPaddingY * 2;
+        const labelX = rowX + rowPaddingX;
+        const labelY = rowY + (lapRowHeight - labelHeight) / 2;
+        drawRoundedRectPath(ctx, labelX, labelY, labelWidth, labelHeight, 999);
+        ctx.fillStyle = "rgba(148, 163, 184, 0.12)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+        ctx.lineWidth = Math.max(1, 1 * ratio * scaleFactor);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(226, 232, 240, 0.7)";
+        ctx.fillText(
+          labelText,
+          labelX + labelPaddingX,
+          rowY + lapRowHeight / 2,
+        );
+
+        const totalText = formatStopwatch(lap.totalMs);
+        const splitText = `+${formatStopwatch(lap.lapMs)}`;
+        ctx.font = `600 ${lapsFont}px "Space Grotesk", sans-serif`;
+        const totalWidth = ctx.measureText(totalText).width;
+        const splitTextWidth = ctx.measureText(splitText).width;
+        const splitWidth = splitTextWidth + splitPaddingX * 2;
+        let splitX = rowX + rowWidth - rowPaddingX - splitWidth;
+        let totalX = splitX - timesGap - totalWidth;
+        const minTimesX = labelX + labelWidth + timesGap;
+
+        if (totalX < minTimesX) {
+          totalX = rowX + rowWidth - rowPaddingX - totalWidth;
+          splitX = null;
+        }
+        if (totalX < minTimesX) {
+          totalX = minTimesX;
+        }
+
+        ctx.fillStyle = "rgba(248, 250, 252, 0.9)";
+        ctx.textAlign = "left";
+        ctx.fillText(totalText, totalX, rowY + lapRowHeight / 2);
+
+        if (splitX !== null) {
+          const splitHeight = lapsFont + splitPaddingY * 2;
+          const splitY = rowY + (lapRowHeight - splitHeight) / 2;
+          drawRoundedRectPath(
+            ctx,
+            splitX,
+            splitY,
+            splitWidth,
+            splitHeight,
+            999,
+          );
+          ctx.fillStyle = "rgba(56, 189, 248, 0.12)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.25)";
+          ctx.lineWidth = Math.max(1, 1 * ratio * scaleFactor);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(56, 189, 248, 0.9)";
+          ctx.fillText(
+            splitText,
+            splitX + splitPaddingX,
+            rowY + lapRowHeight / 2,
+          );
+        }
+
+        ctx.restore();
+      });
+    }
 
     if (widget.type === "clock") {
       const mainWidth = ctx.measureText(mainText).width;
-      const sideX = x + w / 2 + mainWidth / 2 + padding * 0.6;
+      const clockGap = 12 * cssScale;
+      const sideX = x + w / 2 + mainWidth / 2 + clockGap;
       const secondsSize = timeSize * 0.42;
       const suffixSize = timeSize * 0.28;
       ctx.save();
@@ -4346,10 +4784,14 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
       ctx.font = `600 ${suffixSize}px "Space Grotesk", sans-serif`;
       const suffixWidth = ctx.measureText(clockParts.suffix).width;
       ctx.restore();
-      const pillWidth = Math.max(secondsWidth, suffixWidth) + padding * 1.2;
-      const pillHeight = secondsSize + suffixSize + padding * 0.9;
+      const pillPaddingX = 10 * cssScale;
+      const pillPaddingY = 8 * cssScale;
+      const pillInnerGap = 4 * cssScale;
+      const pillWidth = Math.max(secondsWidth, suffixWidth) + pillPaddingX * 2;
+      const pillHeight =
+        secondsSize + suffixSize + pillInnerGap + pillPaddingY * 2;
       const pillX = sideX;
-      const pillY = centerY - pillHeight / 2;
+      const pillY = bodyCenterY - pillHeight / 2;
       const pillRadius = 8 * ratio * scaleFactor;
       ctx.save();
       drawRoundedRectPath(ctx, pillX, pillY, pillWidth, pillHeight, pillRadius);
@@ -4374,32 +4816,60 @@ function drawWidgetsComposite(ctx, scaleX, scaleY, offsetX, offsetY, ratio) {
       ctx.font = `600 ${secondsSize}px "Space Grotesk", sans-serif`;
       ctx.fillText(
         clockParts.seconds,
-        pillX + padding * 0.6,
-        centerY - secondsSize * 0.25,
+        pillX + pillPaddingX,
+        bodyCenterY - secondsSize * 0.25,
       );
       ctx.font = `600 ${suffixSize}px "Space Grotesk", sans-serif`;
       ctx.fillStyle = "rgba(248, 250, 252, 0.75)";
       ctx.fillText(
         clockParts.suffix,
-        pillX + padding * 0.6,
-        centerY + suffixSize * 0.9,
+        pillX + pillPaddingX,
+        bodyCenterY + suffixSize * 0.9,
       );
     }
 
-    if (widget.type === "stopwatch" && widget.stopwatch?.laps?.length) {
-      const lastLap = widget.stopwatch.laps[widget.stopwatch.laps.length - 1];
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = "rgba(226, 232, 240, 0.7)";
-      ctx.font = `${labelSize}px "Space Grotesk", sans-serif`;
-      ctx.fillText(
-        `${lastLap.label} ${formatStopwatch(lastLap.timeMs)}`,
-        x + w / 2,
-        y + h - padding * 1.4,
-      );
-    }
     ctx.restore();
   });
+}
+
+function getQrLayoutMetrics(widgetWidth, widgetHeight, scale) {
+  const base = Math.max(1, Math.min(widgetWidth, widgetHeight));
+  const paddingX = 12 * scale;
+  const paddingY = 10 * scale;
+  const cardGap = 10 * scale;
+  const labelSize = Math.max(10, Math.min(12, base * 0.07)) * scale;
+  const labelLine = labelSize * 1.2;
+  const bodyHeight = Math.max(
+    0,
+    widgetHeight * scale - paddingY * 2 - labelLine - cardGap,
+  );
+  const bodyWidth = Math.max(0, widgetWidth * scale - paddingX * 2);
+  const inputFont = Math.max(11, Math.min(14, base * 0.1)) * scale;
+  const inputHeight = inputFont * 1.2 + 12 * scale;
+  const inputMarginTop = 6 * scale;
+  const qrGap = 8 * scale;
+  const previewHeight = Math.max(
+    0,
+    bodyHeight - inputHeight - inputMarginTop - qrGap,
+  );
+  const previewSize = Math.max(0, Math.min(bodyWidth, previewHeight));
+  const bodyTop = paddingY + labelLine + cardGap;
+  const previewTop = bodyTop + (previewHeight - previewSize) / 2;
+  const inputTop = bodyTop + previewHeight + qrGap + inputMarginTop;
+  const inputCenterY = inputTop + inputHeight / 2;
+
+  return {
+    bodyWidth,
+    inputFont,
+    previewSize,
+    previewTop,
+    inputCenterY,
+  };
+}
+
+function toggleWidgetAudience(widget) {
+  if (!widget) return;
+  widget.showForUsers = !widget.showForUsers;
 }
 
 function startWebcamLoop() {
@@ -4459,6 +4929,9 @@ function startLivePreviewLoop() {
 function stopLivePreviewLoop() {
   if (livePreviewRaf) cancelAnimationFrame(livePreviewRaf);
   livePreviewRaf = null;
+  if (!isRecording.value && !isLiveBroadcasting.value) {
+    isPreviewingRecording.value = false;
+  }
 }
 
 function toggleRecordingPause() {
@@ -4916,6 +5389,7 @@ function openLivePreview() {
   }
   const streamSource = recordCompositeCanvas || recordCanvas || inkCanvas.value;
   if (!streamSource?.captureStream) return;
+  isPreviewingRecording.value = true;
   renderRecordingFrame();
   const stream = streamSource.captureStream(recordingSettings.value.fps || 30);
   const w = window.open("", "WieTeachLivePreview", "width=900,height=520");
@@ -4936,6 +5410,7 @@ function openLivePreview() {
   w.addEventListener("beforeunload", () => {
     stream.getTracks().forEach((t) => t.stop());
     livePreviewWindow = null;
+    isPreviewingRecording.value = false;
     stopLivePreviewLoop();
   });
   if (webcam.enabled && webcam.chromaEnabled) startWebcamLoop();
@@ -5642,7 +6117,7 @@ function getWidgetBounds() {
 function clampWidgetToStage(widget) {
   const bounds = getWidgetBounds();
   if (!bounds.width || !bounds.height) return;
-  const aspect = widget.aspect || widget.width / widget.height || 1;
+  const aspect = getWidgetAspect(widget);
   const minW = widget.minWidth || WIDGET_MIN_WIDTH;
   const minH = widget.minHeight || WIDGET_MIN_HEIGHT;
   if (widget.width < minW) {
@@ -5673,12 +6148,21 @@ function clampValue(value, min, max) {
 
 function getWidgetStyle(widget) {
   const base = Math.max(1, Math.min(widget.width, widget.height));
+  const qrSize =
+    widget.type === "qr"
+      ? getQrLayoutMetrics(widget.width, widget.height, 1).previewSize
+      : null;
   return {
     left: `${widget.x}px`,
     top: `${widget.y}px`,
     width: `${widget.width}px`,
     height: `${widget.height}px`,
     "--widget-base": `${base}px`,
+    "--widget-w": `${widget.width}px`,
+    "--widget-h": `${widget.height}px`,
+    "--widget-h-sw": `${widget.height + 100}px`,
+
+    ...(qrSize ? { "--qr-size": `${qrSize}px` } : {}),
   };
 }
 
@@ -5718,11 +6202,13 @@ function addWidget(type) {
   const bounds = getWidgetBounds();
   let base = { w: 300, h: 190, minW: 220, minH: 140 };
   if (type === "clock") {
-    base = { w: 220, h: 140, minW: 180, minH: 115 };
+    base = { w: 220, h: 140, minW: 200, minH: 130 };
+  } else if (type === "timer") {
+    base = { w: 300, h: 190, minW: 260, minH: 190 };
   } else if (type === "stopwatch") {
-    base = { w: 280, h: 170, minW: 220, minH: 140 };
+    base = { w: 280, h: 170, minW: 260, minH: 190 };
   } else if (type === "qr") {
-    base = { w: 220, h: 220, minW: 180, minH: 180 };
+    base = { w: 220, h: 220, minW: 200, minH: 200 };
   }
   const offset = widgets.value.length * 18;
   const startX = bounds.width ? (bounds.width - base.w) * 0.5 : 40;
@@ -5734,11 +6220,12 @@ function addWidget(type) {
     y: startY + offset,
     width: base.w,
     height: base.h,
-    aspect: base.w / base.h,
+    aspect: type === "qr" ? 1 : base.w / base.h,
     minWidth: base.minW,
     minHeight: base.minH,
     dragging: false,
     resizing: false,
+    showForUsers: false,
     timer: type === "timer" ? createTimerState(5 * 60 * 1000) : null,
     stopwatch: type === "stopwatch" ? createStopwatchState() : null,
     qr: type === "qr" ? createQrState() : null,
@@ -5748,9 +6235,24 @@ function addWidget(type) {
   clampWidgetToStage(widget);
   showWidgetPopover.value = false;
   if (widget.type === "qr") {
-    widget.qr.text = "https://";
+    widget.qr.text = "https://forms.gle/429GFwj6uT2AaH4R7";
     scheduleQrUpdate(widget, true);
   }
+}
+
+function getWidgetTitle(widget) {
+  if (!widget) return "Widget";
+  if (widget.type === "clock") return "Clock";
+  if (widget.type === "timer") return "Timer";
+  if (widget.type === "stopwatch") return "Stopwatch";
+  if (widget.type === "qr") return "QR code";
+  return "Widget";
+}
+
+function getWidgetAspect(widget) {
+  if (!widget) return 1;
+  if (widget.type === "qr") return 1;
+  return widget.aspect || widget.width / widget.height || 1;
 }
 
 function removeWidget(widgetId) {
@@ -5830,9 +6332,15 @@ function toggleStopwatch(widget) {
 function lapStopwatch(widget) {
   if (!widget?.stopwatch) return;
   const count = widget.stopwatch.laps.length + 1;
+  const prevTotal =
+    widget.stopwatch.laps.length > 0
+      ? widget.stopwatch.laps[widget.stopwatch.laps.length - 1].totalMs
+      : 0;
+  const totalMs = widget.stopwatch.elapsedMs;
   widget.stopwatch.laps.push({
     label: `Q${count}`,
-    timeMs: widget.stopwatch.elapsedMs,
+    lapMs: Math.max(0, totalMs - prevTotal),
+    totalMs,
   });
 }
 
@@ -5940,8 +6448,17 @@ function stopWidgetTicker() {
   widgetTickInterval = null;
 }
 
+function updateWidgetTickerState() {
+  if (!widgets.value.length) {
+    stopWidgetTicker();
+    return;
+  }
+  if (!widgetTickInterval) startWidgetTicker();
+}
+
 function onWidgetDragStart(widget, event) {
   if (event.button !== 0) return;
+  if (event.target?.closest?.("button, input")) return;
   event.preventDefault();
   const bounds = getWidgetBounds();
   widget.dragging = true;
@@ -5986,7 +6503,7 @@ function onWidgetResizeStart(widget, event) {
     startY: event.clientY,
     startW: widget.width,
     startH: widget.height,
-    aspect: widget.aspect || widget.width / widget.height || 1,
+    aspect: widget.type === "stopwatch" ? null : getWidgetAspect(widget),
     bounds,
   };
   window.addEventListener("pointermove", onWidgetResizeMove);
@@ -6001,17 +6518,21 @@ function onWidgetResizeMove(event) {
   const minH = widget.minHeight || WIDGET_MIN_HEIGHT;
   const dx = event.clientX - startX;
   const dy = event.clientY - startY;
-  const useWidth = Math.abs(dx) >= Math.abs(dy);
-  let nextW = useWidth ? startW + dx : (startH + dy) * aspect;
-  let nextH = nextW / aspect;
+  let nextW = startW + dx;
+  let nextH = startH + dy;
+  if (aspect) {
+    const useWidth = Math.abs(dx) >= Math.abs(dy);
+    nextW = useWidth ? startW + dx : (startH + dy) * aspect;
+    nextH = nextW / aspect;
+  }
 
   if (nextW < minW) {
     nextW = minW;
-    nextH = nextW / aspect;
+    if (aspect) nextH = nextW / aspect;
   }
   if (nextH < minH) {
     nextH = minH;
-    nextW = nextH * aspect;
+    if (aspect) nextW = nextH * aspect;
   }
 
   if (bounds.width && bounds.height) {
@@ -6019,11 +6540,11 @@ function onWidgetResizeMove(event) {
     const maxH = Math.max(40, bounds.height - widget.y);
     if (nextW > maxW) {
       nextW = maxW;
-      nextH = nextW / aspect;
+      if (aspect) nextH = nextW / aspect;
     }
     if (nextH > maxH) {
       nextH = maxH;
-      nextW = nextH * aspect;
+      if (aspect) nextW = nextH * aspect;
     }
   }
 
@@ -8024,7 +8545,7 @@ onMounted(async () => {
   await loadDevices();
   await loadRecordingDirHandle();
   loadLiveSettings();
-  startWidgetTicker();
+  updateWidgetTickerState();
 
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("popstate", handlePopstate);
@@ -8035,6 +8556,18 @@ onMounted(async () => {
     if (deckDirty) saveDeckToDb();
   }, 5000);
 });
+
+watch(
+  () => widgets.value.length,
+  (count) => {
+    updateWidgetTickerState();
+    if (count === 0) {
+      widgetSnapshotCache.clear();
+      widgetDomRefs.clear();
+    }
+  },
+  { immediate: true },
+);
 
 watch(routePath, (path) => {
   if (path === "/recordings") {
