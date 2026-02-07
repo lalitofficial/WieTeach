@@ -1755,6 +1755,9 @@ let liveAudioStream = null;
 let liveSilentContext = null;
 let liveOwnsAudio = false;
 let liveAudioContext = null;
+let liveAudioDestination = null;
+let liveAudioSource = null;
+let liveAudioGain = null;
 let liveBytesSent = 0;
 let liveMeterTimer = null;
 const liveBitrateKbps = ref(0);
@@ -2172,6 +2175,36 @@ async function mixLiveAudioTrack(stream) {
   const dest = liveAudioContext.createMediaStreamDestination();
   source.connect(dest);
   return dest.stream.getAudioTracks()[0] || null;
+}
+
+async function initLiveAudioPipeline() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  if (!liveAudioContext) {
+    liveAudioContext = new AudioCtx();
+  }
+  if (liveAudioContext.state === "suspended") {
+    await liveAudioContext.resume();
+  }
+  if (!liveAudioDestination) {
+    liveAudioDestination = liveAudioContext.createMediaStreamDestination();
+  }
+  if (!liveAudioGain) {
+    liveAudioGain = liveAudioContext.createGain();
+    liveAudioGain.gain.value = avControls.micEnabled ? 1 : 0;
+    liveAudioGain.connect(liveAudioDestination);
+  }
+}
+
+function attachLiveAudioSource(stream) {
+  if (!liveAudioContext || !liveAudioDestination || !stream) return;
+  if (liveAudioSource) {
+    try {
+      liveAudioSource.disconnect();
+    } catch {}
+  }
+  liveAudioSource = liveAudioContext.createMediaStreamSource(stream);
+  liveAudioSource.connect(liveAudioGain);
 }
 
 async function openLastRecording() {
@@ -3065,12 +3098,17 @@ async function handleMicDeviceChange() {
   if (isRecording.value && state.recordingAudio) {
     console.warn("Mic device change will apply to next recording.");
   }
+  if (isLiveBroadcasting.value) {
+    if (micPreviewStream) {
+      stopMicPreview();
+    }
+    await startMicPreview();
+    await refreshLiveAudioTrack();
+    return;
+  }
   if (micPreviewStream) {
     stopMicPreview();
     await startMicPreview();
-  }
-  if (isLiveBroadcasting.value) {
-    await refreshLiveAudioTrack();
   }
 }
 
@@ -3090,16 +3128,20 @@ async function toggleWebcam() {
     let stream = null;
     try {
       const constraints = {
-        video: precheck.cameraId
-          ? { deviceId: { exact: precheck.cameraId } }
-          : true,
+        video: {
+          deviceId: precheck.cameraId
+            ? { exact: precheck.cameraId }
+            : undefined,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
       console.warn("Exact device failed, falling back to default camera", err);
       stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       });
     }
@@ -3248,6 +3290,9 @@ function setMicEnabled(enabled, streamOverride = null) {
       track.enabled = enabled;
     });
   }
+  if (liveAudioGain) {
+    liveAudioGain.gain.value = enabled ? 1 : 0;
+  }
 }
 
 function setCamPaused(paused) {
@@ -3264,6 +3309,9 @@ function setMicPaused(paused) {
   stream?.getAudioTracks()?.forEach((track) => {
     track.enabled = !paused;
   });
+  if (liveAudioGain) {
+    liveAudioGain.gain.value = paused ? 0 : 1;
+  }
 }
 
 function toggleCamera() {
@@ -3980,45 +4028,35 @@ async function startLiveBroadcast() {
       recordCompositeCanvas || recordCanvas || inkCanvas.value;
     const canvasStream = captureCanvas.captureStream(fps);
     liveOwnsAudio = false;
+    await initLiveAudioPipeline();
     if (avControls.micEnabled) {
-      if (state.recordingAudio && isAudioActive(state.recordingAudio)) {
-        liveAudioStream = state.recordingAudio;
-      } else {
-        if (!micPreviewStream) {
-          await startMicPreview();
-        }
-        liveAudioStream = micPreviewStream;
+      if (!micPreviewStream) {
+        await startMicPreview();
       }
+      liveAudioStream = micPreviewStream;
       if (!liveAudioStream?.getAudioTracks()?.length) {
         showToast("No audio track from mic", "warn");
       }
       setMicEnabled(true, liveAudioStream);
       setMicPaused(false);
+      attachLiveAudioSource(liveAudioStream);
+      if (liveAudioGain) liveAudioGain.gain.value = 1;
+    } else if (liveAudioGain) {
+      liveAudioGain.gain.value = 0;
     }
     liveStream = new MediaStream();
     canvasStream
       .getVideoTracks()
       .forEach((track) => liveStream.addTrack(track));
-    if (liveAudioStream) {
-      const mixedTrack = await mixLiveAudioTrack(liveAudioStream);
-      if (mixedTrack) {
-        mixedTrack.enabled = true;
-        liveStream.addTrack(mixedTrack);
-      } else {
-        liveAudioStream.getAudioTracks().forEach((track) => {
-          track.enabled = true;
-          liveStream.addTrack(track);
-        });
-      }
+    if (liveAudioDestination?.stream?.getAudioTracks?.().length) {
+      const track = liveAudioDestination.stream.getAudioTracks()[0];
+      liveStream.addTrack(track);
     } else {
       const silentTrack = createSilentAudioTrack();
       if (silentTrack) liveStream.addTrack(silentTrack);
     }
-    if (!liveStream.getAudioTracks().length) {
-      showToast("Live stream has no audio track", "error");
-    }
-    if (liveStream.getAudioTracks().length) {
-      const audioOnlyStream = new MediaStream(liveStream.getAudioTracks());
+    if (liveAudioDestination?.stream?.getAudioTracks?.().length) {
+      const audioOnlyStream = liveAudioDestination.stream;
       const audioMimeType =
         MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
@@ -4125,6 +4163,9 @@ function stopLiveBroadcast() {
     liveAudioContext.close();
   }
   liveAudioContext = null;
+  liveAudioDestination = null;
+  liveAudioSource = null;
+  liveAudioGain = null;
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ type: "stop" }));
   }
@@ -4150,32 +4191,17 @@ function toggleLiveBroadcast() {
 
 async function refreshLiveAudioTrack() {
   if (!isLiveBroadcasting.value || !liveStream) return;
-  if (!avControls.micEnabled) {
-    liveStream.getAudioTracks().forEach((track) => liveStream.removeTrack(track));
-    const silentTrack = createSilentAudioTrack();
-    if (silentTrack) liveStream.addTrack(silentTrack);
-    return;
-  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints.value,
-    });
-    const mixedTrack = await mixLiveAudioTrack(stream);
-    liveStream.getAudioTracks().forEach((track) => liveStream.removeTrack(track));
-    if (mixedTrack) {
-      mixedTrack.enabled = true;
-      liveStream.addTrack(mixedTrack);
-    } else {
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = true;
-        liveStream.addTrack(track);
-      });
+    if (!avControls.micEnabled) {
+      if (liveAudioGain) liveAudioGain.gain.value = 0;
+      return;
     }
-    if (liveAudioStream && liveOwnsAudio) {
-      liveAudioStream.getTracks().forEach((track) => track.stop());
+    if (!micPreviewStream || !isAudioActive(micPreviewStream)) {
+      await startMicPreview();
     }
-    liveAudioStream = stream;
-    liveOwnsAudio = true;
+    liveAudioStream = micPreviewStream;
+    attachLiveAudioSource(liveAudioStream);
+    if (liveAudioGain) liveAudioGain.gain.value = 1;
     setMicPaused(false);
   } catch (err) {
     console.warn("Failed to refresh live audio", err);
