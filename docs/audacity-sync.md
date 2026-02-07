@@ -19,7 +19,7 @@ On macOS, `<uid>` is your user id (e.g. `501`).
 From the repo root:
 
 ```bash
-node tools/audacity-bridge.js
+node tools/audacity-bridge.cjs
 ```
 
 Optional overrides:
