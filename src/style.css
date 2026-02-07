@@ -282,7 +282,6 @@ body {
   stroke-width: 1.8;
 }
 
-
 .recording-ctrls {
   display: inline-flex;
   gap: 6px;
@@ -2174,20 +2173,23 @@ body {
 
 .recording-controls {
   display: grid;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 10px;
   font-size: 12px;
+  padding: 10px;
+  border: 1px solid #e3e7ef;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 
 .recording-controls label {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .recording-controls label.toggle {
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 10px;
 }
 
@@ -2197,8 +2199,45 @@ body {
 }
 
 .recording-controls .mini-btn {
-  padding: 6px 10px;
+  padding: 0 10px;
   font-size: 12px;
+  height: 30px;
+}
+
+.recording-settings-panel {
+  gap: 10px;
+}
+
+.recording-main-card,
+.recording-audacity-card {
+  margin-bottom: 0;
+}
+
+.recording-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.recording-field {
+  display: grid;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.recording-field span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.recording-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .recording-folder-row {
@@ -2213,10 +2252,13 @@ body {
 }
 
 .recording-controls select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 6px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  padding: 6px 8px;
   font-size: 12px;
+  background: #fff;
+  color: #111827;
+  width: 100%;
 }
 
 .live-controls {
@@ -2249,10 +2291,6 @@ body {
   justify-content: space-between;
   font-size: 12px;
   color: #6b7280;
-}
-
-.recording-actions {
-  margin-bottom: 10px;
 }
 
 .recording-list {
@@ -2318,6 +2356,17 @@ body {
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(148, 163, 184, 0.12);
+}
+
+@media (max-width: 700px) {
+  .recording-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recording-sync-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .recording-folder-status.empty {
@@ -2519,7 +2568,7 @@ body {
 .mini-btn {
   border: 1px solid var(--border);
   background: #f7f8fa;
-  width: 32px;
+  /* width: 32px; */
   height: 32px;
   border-radius: 8px;
   font-weight: 700;

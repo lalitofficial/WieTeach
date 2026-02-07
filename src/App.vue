@@ -1602,7 +1602,7 @@
                   Recording
                 </button>
               </div>
-                <div v-if="settingsTab === 'io'" class="settings-pane">
+              <div v-if="settingsTab === 'io'" class="settings-pane">
                 <div class="settings-section">
                   <div class="settings-section-title">Import</div>
                   <button class="settings-card" @click="triggerImport">
@@ -1674,29 +1674,31 @@
                   </button>
                 </div>
               </div>
-                <div v-else class="settings-pane">
-                  <div class="settings-section">
-                    <div class="settings-section-title">Recording</div>
-                  <div class="recording-controls">
-                    <label>
-                      FPS
-                      <select v-model.number="recordingSettings.fps">
-                        <option :value="15">15</option>
-                        <option :value="30">30</option>
-                        <option :value="60">60</option>
-                      </select>
-                    </label>
-                    <label>
-                      Video Mbps
-                      <select v-model.number="recordingSettings.videoMbps">
-                        <option :value="1.5">1.5</option>
-                        <option :value="3">3</option>
-                        <option :value="5">5</option>
-                        <option :value="8">8</option>
-                        <option :value="10">10</option>
-                        <option :value="12">12</option>
-                      </select>
-                    </label>
+              <div v-else class="settings-pane">
+                <div class="settings-section recording-settings-panel">
+                  <div class="settings-section-title">Recording</div>
+                  <div class="recording-controls recording-main-card">
+                    <div class="recording-grid">
+                      <label class="recording-field">
+                        <span>FPS</span>
+                        <select v-model.number="recordingSettings.fps">
+                          <option :value="15">15</option>
+                          <option :value="30">30</option>
+                          <option :value="60">60</option>
+                        </select>
+                      </label>
+                      <label class="recording-field">
+                        <span>Video Mbps</span>
+                        <select v-model.number="recordingSettings.videoMbps">
+                          <option :value="1.5">1.5</option>
+                          <option :value="3">3</option>
+                          <option :value="5">5</option>
+                          <option :value="8">8</option>
+                          <option :value="10">10</option>
+                          <option :value="12">12</option>
+                        </select>
+                      </label>
+                    </div>
                     <div class="recording-folder-row">
                       <button class="mini-btn" @click="pickRecordingFolder">
                         Choose folder
@@ -1709,7 +1711,8 @@
                       </span>
                     </div>
                   </div>
-                    <div class="recording-controls">
+                  <div class="recording-controls recording-audacity-card">
+                    <div class="recording-sync-row">
                       <label class="toggle">
                         <input
                           type="checkbox"
@@ -1718,20 +1721,30 @@
                         />
                         <span>Audacity sync</span>
                       </label>
-                    <span
-                      v-if="audacityBridgeUrl"
-                      class="audacity-status-text"
-                      :class="audacityStatus.state"
+                      <span
+                        v-if="audacityBridgeUrl"
+                        class="audacity-status-text"
+                        :class="audacityStatus.state"
+                      >
+                        {{ audacityStatus.text }}
+                      </span>
+                      <span v-else class="audacity-status-text missing">
+                        Set VITE_AUDACITY_BRIDGE_URL
+                      </span>
+                    </div>
+
+                    <button
+                      class="mini-btn"
+                      :disabled="audacityConnecting"
+                      @click="connectAudacityBridge"
                     >
-                      {{ audacityStatus.text }}
-                    </span>
-                    <span v-else class="audacity-status-text missing">
-                      Set VITE_AUDACITY_BRIDGE_URL
-                    </span>
-                  </div>
-                  <div class="recording-actions">
-                    <button class="pill-btn" @click="toggleRecordings">
-                      {{ isRecording ? "Stop" : "Start" }}
+                      {{
+                        audacityConnecting
+                          ? "Connecting..."
+                          : audacityStatus.state === "connected"
+                            ? "Reconnect Audacity"
+                            : "Connect Audacity"
+                      }}
                     </button>
                   </div>
                 </div>
@@ -2168,6 +2181,7 @@ const audacitySyncEnabled = ref(false);
 const audacityStatus = ref({ state: "off", text: "Sync off" });
 let audacityHealthTimer = null;
 let audacitySyncWarned = false;
+const audacityConnecting = ref(false);
 const TIMER_RING_RADIUS = 44;
 const timerRingCircumference = 2 * Math.PI * TIMER_RING_RADIUS;
 const WIDGET_MIN_WIDTH = 180;
@@ -4449,11 +4463,7 @@ function getStopwatchSnapshot(widget) {
     widgetSnapshotCache.set(widget.id, cache);
   }
   const now = performance.now();
-  if (
-    cache.key !== cacheKey &&
-    !cache.pending &&
-    now - cache.lastRender > 80
-  ) {
+  if (cache.key !== cacheKey && !cache.pending && now - cache.lastRender > 80) {
     cache.pending = true;
     renderElementToImage(card, widget.width, widget.height)
       .then((img) => {
@@ -6523,6 +6533,51 @@ async function checkAudacityHealth() {
   }
 }
 
+async function connectAudacityBridge() {
+  if (!audacityBridgeUrl) {
+    showToast("Set VITE_AUDACITY_BRIDGE_URL first", "warn");
+    return false;
+  }
+  audacityConnecting.value = true;
+  try {
+    await checkAudacityHealth();
+    if (audacityStatus.value.state === "connected") {
+      audacitySyncEnabled.value = true;
+      showToast("Audacity already connected", "success");
+      return true;
+    }
+    const res = await fetch("/__audacity/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bridgeUrl: audacityBridgeUrl }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      showToast(
+        "Could not start Audacity bridge. Run: node tools/audacity-bridge.cjs",
+        "error",
+      );
+      return false;
+    }
+    await checkAudacityHealth();
+    if (audacityStatus.value.state === "connected") {
+      audacitySyncEnabled.value = true;
+      showToast("Audacity connected", "success");
+      return true;
+    }
+    showToast("Bridge started but Audacity pipe is not ready", "warn");
+    return false;
+  } catch (err) {
+    showToast(
+      "Could not start Audacity bridge. Run: node tools/audacity-bridge.cjs",
+      "error",
+    );
+    return false;
+  } finally {
+    audacityConnecting.value = false;
+  }
+}
+
 function startAudacityHealthTimer() {
   if (audacityHealthTimer) clearInterval(audacityHealthTimer);
   audacityHealthTimer = setInterval(checkAudacityHealth, 3000);
@@ -6556,7 +6611,6 @@ async function sendAudacityCommand(action) {
     return false;
   }
 }
-
 
 function onWidgetDragStart(widget, event) {
   if (event.button !== 0) return;
