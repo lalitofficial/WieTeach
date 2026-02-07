@@ -2131,6 +2131,9 @@ const clockNow = ref(new Date());
 let widgetTickInterval = null;
 let widgetDragState = null;
 let widgetResizeState = null;
+const audacityBridgeUrl = import.meta.env.VITE_AUDACITY_BRIDGE_URL || "";
+const audacitySyncEnabled = ref(!!audacityBridgeUrl);
+let audacitySyncWarned = false;
 const TIMER_RING_RADIUS = 44;
 const timerRingCircumference = 2 * Math.PI * TIMER_RING_RADIUS;
 const WIDGET_MIN_WIDTH = 180;
@@ -4940,10 +4943,12 @@ function toggleRecordingPause() {
     state.recorder.resume();
     recordingPaused.value = false;
     startRecordingTimer();
+    sendAudacityCommand("resume");
   } else {
     state.recorder.pause();
     recordingPaused.value = true;
     pauseRecordingTimer();
+    sendAudacityCommand("pause");
   }
 }
 
@@ -5325,6 +5330,7 @@ async function startRecording() {
     requestOverlay();
     startRecordingLoop();
     startRecordingTimer();
+    sendAudacityCommand("start");
     if (webcam.enabled && webcam.chromaEnabled) startWebcamLoop();
     state.recorder = recorder;
     state.recordingStream = mixedStream;
@@ -5355,6 +5361,7 @@ function stopRecording() {
   stopRecordingLoop();
   stopRecordingTimer();
   stopMicMeter();
+  sendAudacityCommand("stop");
 }
 
 function downloadRecording(rec) {
@@ -6454,6 +6461,22 @@ function updateWidgetTickerState() {
     return;
   }
   if (!widgetTickInterval) startWidgetTicker();
+}
+
+async function sendAudacityCommand(action) {
+  if (!audacitySyncEnabled.value || !audacityBridgeUrl) return;
+  try {
+    await fetch(`${audacityBridgeUrl}/command`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+  } catch (err) {
+    if (!audacitySyncWarned) {
+      audacitySyncWarned = true;
+      showToast("Audacity sync unavailable", "warn");
+    }
+  }
 }
 
 function onWidgetDragStart(widget, event) {

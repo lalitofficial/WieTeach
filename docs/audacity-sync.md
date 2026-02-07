@@ -1,0 +1,39 @@
+# Audacity Sync (mod-script-pipe)
+
+This app can mirror **Start / Pause / Stop** recording actions to Audacity
+using the `mod-script-pipe` feature.
+
+## 1) Enable mod-script-pipe in Audacity
+1. Open **Audacity > Preferences**.
+2. Go to **Modules**.
+3. Find **mod-script-pipe** and set it to **Enabled**.
+4. Restart Audacity.
+
+When enabled, Audacity creates two pipes:
+- `/tmp/audacity_script_pipe.to.<uid>`
+- `/tmp/audacity_script_pipe.from.<uid>`
+
+On macOS, `<uid>` is your user id (e.g. `501`).
+
+## 2) Run the local bridge
+From the repo root:
+
+```bash
+node tools/audacity-bridge.js
+```
+
+Optional overrides:
+- `AUDACITY_BRIDGE_PORT` (default `7337`)
+- `AUDACITY_BRIDGE_HOST` (default `127.0.0.1`)
+- `AUDACITY_PIPE_DIR` (default `/tmp`)
+- `AUDACITY_PIPE_TO` / `AUDACITY_PIPE_FROM` (full paths if Audacity uses custom paths)
+
+## 3) Tell the app where the bridge is
+Set the env var for Vite:
+
+```bash
+VITE_AUDACITY_BRIDGE_URL=http://127.0.0.1:7337
+```
+
+Then start the app as usual.  
+Now **Start / Pause / Stop** in the app will also control Audacity.
